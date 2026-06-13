@@ -1,0 +1,7 @@
+diff --git a/sonic-frameworks-keybind/sonic-frameworks-keybind.spec b/sonic-frameworks-keybind/sonic-frameworks-keybind.spec
+--- a/sonic-frameworks-keybind/sonic-frameworks-keybind.spec
++++ b/sonic-frameworks-keybind/sonic-frameworks-keybind.spec
+@@ -43 +43 @@
+-BuildRequires: plasma6-xdg-desktop-portal-kde
++BuildRequires: xdg-desktop-portal-kde
+

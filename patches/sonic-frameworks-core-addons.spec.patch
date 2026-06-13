@@ -1,0 +1,7 @@
+diff --git a/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec b/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec
+--- a/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec
++++ b/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec
+@@ -28 +28 @@
+-BuildRequires: python%{pyver}dist(build)
++BuildRequires: python3-build
+

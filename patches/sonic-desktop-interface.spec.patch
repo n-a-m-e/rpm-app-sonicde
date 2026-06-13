@@ -1,0 +1,12 @@
+diff --git a/sonic-desktop-interface/sonic-desktop-interface.spec b/sonic-desktop-interface/sonic-desktop-interface.spec
+--- a/sonic-desktop-interface/sonic-desktop-interface.spec
++++ b/sonic-desktop-interface/sonic-desktop-interface.spec
+@@ -148 +148 @@
+-BuildRequires: %mklibname -d KF6IconWidgets
++BuildRequires: kf6-kiconthemes-devel
+@@ -154,2 +154,2 @@
+-Recommends: (plasma6-kde-gtk-config if %{_lib}gtk3_0)
+-Requires: openmandriva-kde-translation
++Recommends: (kde-gtk-config if %{_lib}gtk3_0)
++Requires: kde-l10n
+

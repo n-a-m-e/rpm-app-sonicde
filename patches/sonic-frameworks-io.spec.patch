@@ -1,0 +1,7 @@
+diff --git a/sonic-frameworks-io/sonic-frameworks-io.spec b/sonic-frameworks-io/sonic-frameworks-io.spec
+--- a/sonic-frameworks-io/sonic-frameworks-io.spec
++++ b/sonic-frameworks-io/sonic-frameworks-io.spec
+@@ -73 +73 @@
+-BuildRequires: %mklibname -d KF6IconWidgets
++BuildRequires: kf6-kiconthemes-devel
+

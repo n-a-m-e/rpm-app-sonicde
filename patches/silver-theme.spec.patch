@@ -1,0 +1,10 @@
+diff --git a/silver-theme/silver-theme.spec b/silver-theme/silver-theme.spec
+--- a/silver-theme/silver-theme.spec
++++ b/silver-theme/silver-theme.spec
+@@ -47,3 +47,2 @@
+-BuildRequires:  cmake(Qt6ExamplesAssetDownloaderPrivate)
+-BuildRequires:  pkgconfig(Qt6QmlAssetDownloader)
+-BuildRequires:  qt6-qtbase-theme-gtk3
++BuildRequires:  qt6-qtdeclarative-devel
++BuildRequires:  qt6-qtbase-gui
+
