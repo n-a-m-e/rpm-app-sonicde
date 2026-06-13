@@ -14,6 +14,7 @@ echo "$ROOT" > .queue
 fetch_spec() {
   local p="$1" b dir="$OUT/$p"
   mkdir -p "$dir"
+
   for b in master main rolling; do
     curl -fsSL "https://raw.githubusercontent.com/OpenMandrivaAssociation/$p/$b/$p.spec" \
       -o "$dir/$p.spec" 2>/dev/null && {
@@ -21,6 +22,7 @@ fetch_spec() {
         return 0
       }
   done
+
   rm -rf "$dir"
   return 1
 }
@@ -34,25 +36,31 @@ clean_dep() {
 
 enqueue() {
   local d="$1"
-  [[ -z "$d" ]] && return
-  grep -Eiq "$MATCH" <<< "$d" || return
-  grep -Fxq "$d" .seen .queue 2>/dev/null || echo "$d" >> .queue
+
+  [[ -n "$d" ]] || return 0
+  grep -Eiq "$MATCH" <<< "$d" || return 0
+  grep -Fxq "$d" .seen .queue 2>/dev/null && return 0
+
+  echo "$d" >> .queue
 }
 
 scan_spec() {
   local pkg="$1" spec="$2" line word dep
-  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires|Recommends|Suggests)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$spec" |
+
   while read -r line; do
     [[ "$line" =~ ^%mklibname[[:space:]]+-d[[:space:]]+([^[:space:]]+) ]] && {
       enqueue "${BASH_REMATCH[1]}"
       continue
     }
+
     for word in $line; do
       dep="$(clean_dep "$word" "$pkg")"
       [[ "$dep" == "$pkg" ]] && continue
       enqueue "$dep"
     done
-  done
+  done < <(
+    awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires|Recommends|Suggests)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$spec"
+  )
 }
 
 while [[ -s .queue ]]; do
@@ -73,7 +81,7 @@ rm -f .queue .seen .tmp
   cd "$OUT"
   git init -q
   git add .
-  git -c user.name=builder -c user.email=builder@example.invalid commit -qm "download sonicde specs"
+  git -c user.name=builder -c user.email=builder@example.invalid commit --allow-empty -qm "download sonicde specs"
 )
 
 clone_url="file://$PWD/$OUT"
