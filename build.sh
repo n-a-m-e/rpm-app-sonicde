@@ -12,9 +12,10 @@ mkdir -p "$OUT"
 fetch() {
   mkdir -p "$OUT/$1"
   for b in master main rolling; do
-    curl -fsSL "https://raw.githubusercontent.com/$ORG/$1/$b/$1.spec" -o "$OUT/$1/$1.spec" 2>/dev/null && return
+    curl -fsSL "https://raw.githubusercontent.com/$ORG/$1/$b/$1.spec" -o "$OUT/$1/$1.spec" 2>/dev/null && return 0
   done
-  rm -rf "$OUT/$1"; return 1
+  rm -rf "$OUT/$1"
+  return 1
 }
 
 clean() {
@@ -24,6 +25,7 @@ clean() {
 
 idx() {
   r="$1"; s="$OUT/$r/$r.spec"
+  [[ -f "$s" ]] || return 0
   echo -e "$r\t$r" >> "$OUT/.provides"
   awk -v r="$r" '
     /^[[:space:]]*%package[[:space:]]+-n[[:space:]]+/ {print r "\t" $3}
@@ -59,25 +61,43 @@ page=1
 while :; do
   json="$(curl -fsSL "https://api.github.com/orgs/$ORG/repos?per_page=100&page=$page")"
   grep -q '"name":' <<< "$json" || break
-  grep -o '"name": *"[^"]*"' <<< "$json" | sed -E 's/.*"([^"]+)".*/\1/' | grep -Ei "$MATCH" |
-  while read -r r; do fetch "$r" && idx "$r"; done
+
+  names="$(grep -o '"name": *"[^"]*"' <<< "$json" | sed -E 's/.*"([^"]+)".*/\1/' | grep -Ei "$MATCH" || true)"
+  while read -r r; do
+    [[ -n "$r" ]] || continue
+    fetch "$r" && idx "$r"
+  done <<< "$names"
+
   page=$((page+1))
 done
-fetch task-sonicde; idx task-sonicde
+
+fetch task-sonicde
+idx task-sonicde
 sort -u -o "$OUT/.provides" "$OUT/.provides"
 
 add task-sonicde
 while [[ -s .q ]]; do
-  r="$(head -n1 .q)"; sed -i '1d' .q
+  r="$(head -n1 .q)"
+  sed -i '1d' .q
+
   grep -Fxq "$r" .s 2>/dev/null && continue
-  echo "$r" >> .s; echo "$r" >> "$OUT/.order"
-  deps "$r" | while read -r d; do [[ "$r" == task-sonicde ]] && ! grep -Eiq "$MATCH" <<< "$d" || add "$d"; done
+  echo "$r" >> .s
+  echo "$r" >> "$OUT/.order"
+
+  while read -r d; do
+    [[ -n "$d" ]] || continue
+    [[ "$r" == task-sonicde ]] && ! grep -Eiq "$MATCH" <<< "$d" && continue
+    add "$d"
+  done < <(deps "$r")
 done
+
 rm -f .q .s
 
 (cd "$OUT"; git init -q; git add .; git -c user.name=builder -c user.email=builder@example.invalid commit --allow-empty -qm specs)
 
-url="file://$PWD/$OUT"; commit="$(git -C "$OUT" rev-parse HEAD)"
+url="file://$PWD/$OUT"
+commit="$(git -C "$OUT" rev-parse HEAD)"
+
 tac "$OUT/.order" | while read -r p; do
   rpm-build-queue add --package "$p" --clone-url "$url" --commit "$commit" --subdir "$p" --spec "$p.spec"
 done
