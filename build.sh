@@ -1,97 +1,97 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ORG=OpenMandrivaAssociation
 OUT=sonicde-specs
+ORG=OpenMandrivaAssociation
 MATCH='sonic|silver'
 
-rm -rf "$OUT" .q .s
+rm -rf "$OUT" .q .seen
 mkdir -p "$OUT"
-: > .q; : > .s; : > "$OUT/.order"; : > "$OUT/.provides"
+echo task-sonicde > .q
+: > .seen
+: > "$OUT/.order"
 
 fetch() {
   mkdir -p "$OUT/$1"
   for b in master main rolling; do
-    curl -fsSL "https://raw.githubusercontent.com/$ORG/$1/$b/$1.spec" -o "$OUT/$1/$1.spec" 2>/dev/null && return 0
+    curl -fsSL "https://raw.githubusercontent.com/$ORG/$1/$b/$1.spec" -o "$OUT/$1/$1.spec" 2>/dev/null && {
+      echo "$1" >> "$OUT/.order"
+      return 0
+    }
   done
   rm -rf "$OUT/$1"
   return 1
 }
 
+camel() {
+  sed -E 's/([a-z0-9])([A-Z])/\1-\2/g;s/([A-Z]+)([A-Z][a-z])/\1-\2/g' <<< "$1" | tr A-Z a-z
+}
+
+repo() {
+  d="${1%-devel}"
+  [[ "$d" == task-sonicde-minimal ]] && { echo task-sonicde; return; }
+  [[ "$d" == sonic-* ]] && { echo "$d"; return; }
+
+  if [[ "$d" =~ ^libSonicFrameworks(.+) ]]; then
+    echo "sonic-frameworks-$(camel "${BASH_REMATCH[1]}")"
+  elif [[ "$d" =~ ^libSonicDE(.+) ]]; then
+    echo "sonic-$(camel "${BASH_REMATCH[1]}")"
+  elif [[ "$d" == libSonicDE ]]; then
+    echo sonic-interface-libraries
+  else
+    echo "$d"
+  fi
+}
+
 clean() {
-  x="${1//%\{name\}/$2}"; x="${x//%\{?_isa\}/}"; x="${x//%\{EVRD\}/}"; x="${x//%\{_lib\}/lib}"
+  x="${1//%\{name\}/$2}"
+  x="${x//%\{?_isa\}/}"
+  x="${x//%\{EVRD\}/}"
+  x="${x//%\{_lib\}/lib}"
   sed -E 's/#.*//;s/%\{[^}]+\}//g;s/[<>=].*//;s/^[[:space:]("'\'']+//;s/[[:space:],)"'\'']+$//' <<< "$x" | awk '{print $1}'
 }
 
-idx() {
-  r="$1"; s="$OUT/$r/$r.spec"
-  [[ -f "$s" ]] || return 0
-  echo -e "$r\t$r" >> "$OUT/.provides"
-  awk -v r="$r" '
-    /^[[:space:]]*%package[[:space:]]+-n[[:space:]]+/ {print r "\t" $3}
-    /^[[:space:]]*%package[[:space:]]+[^-[:space:]]+/ {print r "\t" r "-" $2}
-    /^[[:space:]]*Provides[[:space:]]*:/ {
-      sub(/^[^:]*:[[:space:]]*/,""); gsub(/%[{][?]_isa[}]/,""); gsub(/%[{]name[}]/,r)
-      gsub(/%[{][^}]+[}]/,""); sub(/[[:space:]]*(>=|<=|=|>|<)[[:space:]].*/,"")
-      gsub(/^[[:space:]]+|[[:space:]]+$/,""); if ($0) print r "\t" $0
-    }' "$s" >> "$OUT/.provides"
+add() {
+  d="$1"
+  [[ -n "$d" ]] || return 0
+  grep -Eiq "$MATCH" <<< "$d" || return 0
+  r="$(repo "$d")"
+  grep -Eiq "$MATCH" <<< "$r" || return 0
+  grep -Fxq "$r" .seen .q 2>/dev/null || echo "$r" >> .q
 }
 
-repo() { awk -F '\t' -v d="$1" '$2==d{print $1;exit}' "$OUT/.provides"; }
-
 deps() {
-  r="$1"; s="$OUT/$r/$r.spec"
-  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires|Recommends|Suggests)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$s" |
+  r="$1"
+  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires|Recommends|Suggests)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$OUT/$r/$r.spec" |
   while read -r l; do
     [[ "$l" =~ ^%mklibname[[:space:]]+-d[[:space:]]+([^[:space:]]+) ]] && { echo "${BASH_REMATCH[1]}"; continue; }
-    l="${l#\(}"; l="${l%\)}"; l="${l%% if *}"; l="${l%% or *}"; l="${l%% and *}"
-    [[ "$l" =~ [[:space:]](>=|<=|=|>|<)[[:space:]] ]] && echo "$(clean "$l" "$r")" || for w in $l; do echo "$(clean "$w" "$r")"; done
+
+    l="${l#\(}"; l="${l%\)}"
+    l="${l%% if *}"; l="${l%% or *}"; l="${l%% and *}"
+
+    if [[ "$l" =~ [[:space:]](>=|<=|=|>|<)[[:space:]] ]]; then
+      echo "$(clean "$l" "$r")"
+    else
+      for w in $l; do echo "$(clean "$w" "$r")"; done
+    fi
   done
 }
 
-add() {
-  d="$1"; [[ -n "$d" ]] || return 0
-  grep -Eiq "$MATCH" <<< "$d" || return 0
-  r="$(repo "$d")"; r="${r:-$d}"
-  grep -Eiq "$MATCH" <<< "$r" || return 0
-  grep -Fxq "$r" .s .q 2>/dev/null || echo "$r" >> .q
-}
-
-page=1
-while :; do
-  json="$(curl -fsSL "https://api.github.com/orgs/$ORG/repos?per_page=100&page=$page")"
-  grep -q '"name":' <<< "$json" || break
-
-  names="$(grep -o '"name": *"[^"]*"' <<< "$json" | sed -E 's/.*"([^"]+)".*/\1/' | grep -Ei "$MATCH" || true)"
-  while read -r r; do
-    [[ -n "$r" ]] || continue
-    fetch "$r" && idx "$r"
-  done <<< "$names"
-
-  page=$((page+1))
-done
-
-fetch task-sonicde
-idx task-sonicde
-sort -u -o "$OUT/.provides" "$OUT/.provides"
-
-add task-sonicde
 while [[ -s .q ]]; do
   r="$(head -n1 .q)"
   sed -i '1d' .q
 
-  grep -Fxq "$r" .s 2>/dev/null && continue
-  echo "$r" >> .s
-  echo "$r" >> "$OUT/.order"
+  grep -Fxq "$r" .seen 2>/dev/null && continue
+  echo "$r" >> .seen
 
-  while read -r d; do
-    [[ -n "$d" ]] || continue
+  fetch "$r" || continue
+  deps "$r" | while read -r d; do
     [[ "$r" == task-sonicde ]] && ! grep -Eiq "$MATCH" <<< "$d" && continue
     add "$d"
-  done < <(deps "$r")
+  done
 done
 
-rm -f .q .s
+rm -f .q .seen
 
 (cd "$OUT"; git init -q; git add .; git -c user.name=builder -c user.email=builder@example.invalid commit --allow-empty -qm specs)
 
