@@ -1,4 +1,4 @@
-%global _debugsource_packages 0
+%undefine _debugsource_packages
 %define EVRD %{?epoch:%{epoch}:}%{?version:%{version}}%{?release:-%{release}}
 %define _iconsdir %{_datadir}/icons
 %define _qtdir %{_libdir}/qt6
