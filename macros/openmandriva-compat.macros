@@ -1,6 +1,7 @@
 %undefine _debugsource_packages
 %define _lib lib
 %define _libdir /usr/lib64
+%define pyver 3
 %define EVRD %{?epoch:%{epoch}:}%{?version:%{version}}%{?release:-%{release}}
 %define _iconsdir %{_datadir}/icons
 %define _qtdir %{_libdir}/qt6
