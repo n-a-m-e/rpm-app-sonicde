@@ -1,6 +1,0 @@
-diff --git a/sonic-night-light/sonic-night-light.spec b/sonic-night-light/sonic-night-light.spec
---- a/sonic-night-light/sonic-night-light.spec
-+++ b/sonic-night-light/sonic-night-light.spec
-@@ -34 +34 @@
--# BuildRequires:	cmake(KF6CoreAddons)
-+BuildRequires:	cmake(KF6CoreAddons)
