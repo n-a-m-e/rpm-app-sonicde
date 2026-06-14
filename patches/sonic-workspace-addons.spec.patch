@@ -1,0 +1,6 @@
+diff --git a/sonic-workspace-addons/sonic-workspace-addons.spec b/sonic-workspace-addons/sonic-workspace-addons.spec
+--- a/sonic-workspace-addons/sonic-workspace-addons.spec
++++ b/sonic-workspace-addons/sonic-workspace-addons.spec
+@@ -33 +33 @@
+-BuildRequires: %{_lib}SonicFramworksIO-devel
++BuildRequires: %{_lib}SonicFrameworksIO-devel
