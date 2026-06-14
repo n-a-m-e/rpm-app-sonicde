@@ -5,6 +5,7 @@ OUT=sonicde-specs
 ROOT=task-sonicde
 COMPAT=openmandriva-buildrequires-compat
 MACROS_FILE="${MACROS_FILE:-macros/openmandriva-compat.macros}"
+PATCH_DIR="${PATCH_DIR:-patches}"
 LOG="${LOG:-build-discovery.log}"
 
 SEARCHES=(
@@ -12,11 +13,12 @@ SEARCHES=(
   'https://api.github.com/search/repositories?q=silver%20in:name,description+org:OpenMandrivaAssociation&per_page=100'
 )
 
-rm -rf "$OUT" .repos.tsv .providers.tsv .processed .deps "$LOG"
+rm -rf "$OUT" .repos.tsv .providers.tsv .processed .deps .applied-patches "$LOG"
 mkdir -p "$OUT"
 : > .providers.tsv
 : > .processed
 : > .deps
+: > .applied-patches
 : > "$OUT/.task-sonicde.requires"
 : > "$LOG"
 
@@ -29,7 +31,9 @@ need(){
   command -v curl >/dev/null || die "curl missing"
   command -v python3 >/dev/null || die "python3 missing"
   command -v rpmspec >/dev/null || die "rpmspec missing"
+  command -v patch >/dev/null || die "patch missing"
   [[ -f "$MACROS_FILE" ]] || die "macro file missing: $MACROS_FILE"
+  [[ -d "$PATCH_DIR" ]] || log "No patch directory found: $PATCH_DIR"
   [[ -f "specs/$COMPAT.spec" ]] || die "compat spec missing: specs/$COMPAT.spec"
 }
 
@@ -99,6 +103,37 @@ raw_url(){
   printf 'https://raw.githubusercontent.com/%s/%s/%s/%s.spec\n' "${BASH_REMATCH[1]}" "$name" "$branch" "$name"
 }
 
+apply_repo_patch(){
+  local repo="$1" patch_file="$PATCH_DIR/$repo.spec.patch"
+
+  [[ -f "$patch_file" ]] || return 0
+
+  log "Applying patch: $patch_file"
+  patch -d "$OUT" --batch --forward -p1 < "$patch_file" > "$OUT/$repo/.patch.log" 2>&1 || {
+    sed "s/^/[patch $repo] /" "$OUT/$repo/.patch.log" | tee -a "$LOG" >&2 || true
+    die "patch failed: $patch_file"
+  }
+
+  printf '%s\n' "$patch_file" >> .applied-patches
+}
+
+verify_all_patches_applied(){
+  local p missing=0
+
+  [[ -d "$PATCH_DIR" ]] || return 0
+
+  shopt -s nullglob
+  for p in "$PATCH_DIR"/*.patch; do
+    if ! grep -Fxq "$p" .applied-patches 2>/dev/null; then
+      log "ERROR: patch file was not applied: $p"
+      missing=1
+    fi
+  done
+  shopt -u nullglob
+
+  [[ "$missing" -eq 0 ]] || die "one or more patch files were not applied"
+}
+
 fetch_parse(){
   local repo="$1" branch
   mkdir -p "$OUT/$repo"
@@ -106,6 +141,7 @@ fetch_parse(){
   for branch in master main rolling; do
     if curl -fsSL "$(raw_url "$repo" "$branch")" -o "$OUT/$repo/$repo.spec" 2>"$OUT/$repo/.curl-$branch.err"; then
       log "Fetched $repo ($branch)"
+      apply_repo_patch "$repo"
       cat "$MACROS_FILE" "$OUT/$repo/$repo.spec" > "$OUT/$repo/.with-compat.spec"
 
       if ! rpmspec --parse "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.expanded.spec" 2>"$OUT/$repo/.parse.err"; then
@@ -294,11 +330,12 @@ commit_and_queue(){
 
   cp .processed "$OUT/.processed"
   cp .deps "$OUT/.deps"
+  cp .applied-patches "$OUT/.applied-patches"
 
   log "Final order: $(wc -l < "$OUT/.order") packages"
   sed 's/^/  /' "$OUT/.order" | tee -a "$LOG" >&2
 
-  rm -f .repos.tsv .providers.tsv .processed .deps
+  rm -f .repos.tsv .providers.tsv .processed .deps .applied-patches
 
   (cd "$OUT"; git init -q; git add .; git -c user.name=builder -c user.email=builder@example.invalid commit --allow-empty -qm specs)
 
@@ -317,6 +354,7 @@ commit_and_queue(){
 need
 github_repos
 download_index_all
+verify_all_patches_applied
 walk
 write_task
 toposort
