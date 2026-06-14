@@ -7,6 +7,7 @@ diff --git a/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec b/so
 @@ -28 +28 @@
 -BuildRequires: python%{pyver}dist(build)
 +BuildRequires: python3-build
-@@ -43,0 +44,2 @@
+@@ -43,0 +44,3 @@
 +BuildRequires: qt6-qtbase-private-devel
 +BuildRequires: clang
++BuildRequires: python3-setuptools
