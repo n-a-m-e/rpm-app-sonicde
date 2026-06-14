@@ -5,6 +5,7 @@ OUT=sonicde-specs
 ORG=OpenMandrivaAssociation
 MATCH='sonic|silver'
 ROOT=task-sonicde
+COMPAT_PKG=openmandriva-buildrequires-compat
 MACROS_FILE="${MACROS_FILE:-macros/openmandriva-compat.macros}"
 
 rm -rf "$OUT" .q .seen .deps
@@ -191,6 +192,15 @@ toposort() {
   ' .seen .deps
 }
 
+write_compat_spec() {
+  local src="specs/$COMPAT_PKG.spec" dst="$OUT/$COMPAT_PKG/$COMPAT_PKG.spec"
+
+  [[ -f "$src" ]] || return 0
+
+  mkdir -p "$OUT/$COMPAT_PKG"
+  cp "$src" "$dst"
+}
+
 while [[ -s .q ]]; do
   r="$(head -n1 .q)"
   sed -i '1d' .q
@@ -219,6 +229,7 @@ while [[ -s .q ]]; do
 done
 
 write_task_spec
+write_compat_spec
 toposort > "$OUT/.order"
 rm -f .q .seen .deps
 
@@ -226,6 +237,10 @@ rm -f .q .seen .deps
 
 url="file://$PWD/$OUT"
 commit="$(git -C "$OUT" rev-parse HEAD)"
+
+if [[ -f "$OUT/$COMPAT_PKG/$COMPAT_PKG.spec" ]]; then
+  rpm-build-queue add --package "$COMPAT_PKG" --clone-url "$url" --commit "$commit" --subdir "$COMPAT_PKG" --spec "$COMPAT_PKG.spec"
+fi
 
 while read -r p; do
   rpm-build-queue add --package "$p" --clone-url "$url" --commit "$commit" --subdir "$p" --spec "$p.spec"
