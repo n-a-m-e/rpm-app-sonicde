@@ -1,0 +1,5 @@
+diff --git a/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec b/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec
+--- a/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec
++++ b/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec
+@@ -75,0 +76 @@
++Provides: cmake(KF6CoreAddons)
