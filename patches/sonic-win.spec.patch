@@ -7,8 +7,3 @@ diff --git a/sonic-win/sonic-win.spec b/sonic-win/sonic-win.spec
 @@ -143 +143 @@
 -Suggests:	kwin-aurorae
 +Suggests:	kwin
-@@ -151,4 +151,0 @@
--# Obsolete packages that used to be split out solely for old policy reasons
--%define effectmajor 1
--%define effectname %mklibname kwin4_effect_builtins 1
--Obsoletes: %{effectname} < %{EVRD}
