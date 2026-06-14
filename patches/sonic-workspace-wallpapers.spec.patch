@@ -1,6 +1,0 @@
-diff --git a/sonic-workspace-wallpapers/sonic-workspace-wallpapers.spec b/sonic-workspace-wallpapers/sonic-workspace-wallpapers.spec
---- a/sonic-workspace-wallpapers/sonic-workspace-wallpapers.spec
-+++ b/sonic-workspace-wallpapers/sonic-workspace-wallpapers.spec
-@@ -25 +25 @@
--BuildRequires: ninja
-+BuildRequires: ninja-build
