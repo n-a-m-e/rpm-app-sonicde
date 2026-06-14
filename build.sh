@@ -6,6 +6,7 @@ ROOT=task-sonicde
 COMPAT=openmandriva-buildrequires-compat
 MACROS_FILE="${MACROS_FILE:-macros/openmandriva-compat.macros}"
 PATCH_DIR="${PATCH_DIR:-patches}"
+INDEX_PATCH_ROOT="$OUT/.index-patched"
 LOG="${LOG:-build-discovery.log}"
 
 SEARCHES=(
@@ -104,19 +105,25 @@ raw_url(){
   printf 'https://raw.githubusercontent.com/%s/%s/%s/%s.spec\n' "${BASH_REMATCH[1]}" "$name" "$branch" "$name"
 }
 
-apply_repo_patch(){
-  local repo="$1" patch_file="$PATCH_DIR/$repo.spec.patch"
+prepare_index_spec(){
+  local repo="$1" patch_file="$PATCH_DIR/$repo.spec.patch" index_repo="$INDEX_PATCH_ROOT/$repo"
 
-  [[ -f "$patch_file" ]] || return 0
+  rm -rf "$index_repo"
+  mkdir -p "$INDEX_PATCH_ROOT"
+  cp -a "$OUT/$repo" "$index_repo"
 
-  log "Applying patch: $patch_file"
-  patch -d "$OUT" --batch --forward -p1 < "$patch_file" > "$OUT/$repo/.patch.log" 2>&1 || {
-    sed "s/^/[patch $repo] /" "$OUT/$repo/.patch.log" | tee -a "$LOG" >&2 || true
-    die "patch failed: $patch_file"
-  }
+  if [[ -f "$patch_file" ]]; then
+    log "Applying patch for index only: $patch_file"
+    patch -d "$INDEX_PATCH_ROOT" --batch --forward -p1 < "$patch_file" > "$OUT/$repo/.index-patch.log" 2>&1 || {
+      sed "s/^/[index patch $repo] /" "$OUT/$repo/.index-patch.log" | tee -a "$LOG" >&2 || true
+      die "index patch failed: $patch_file"
+    }
+    printf '%s\n' "$patch_file" >> .applied-patches
+  fi
 
-  printf '%s\n' "$patch_file" >> .applied-patches
+  cat "$MACROS_FILE" "$index_repo/$repo.spec" > "$OUT/$repo/.with-compat.spec"
 }
+
 
 verify_all_patches_applied(){
   local p missing=0
@@ -158,9 +165,7 @@ fetch_parse(){
           log "Fetched full repo: $repo ($branch)"
           rm -rf "$tmp"
 
-          apply_repo_patch "$repo"
-
-          cat "$MACROS_FILE" "$OUT/$repo/$repo.spec" > "$OUT/$repo/.with-compat.spec"
+          prepare_index_spec "$repo"
 
           if ! rpmspec --parse "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.expanded.spec" 2>"$OUT/$repo/.parse.err"; then
             sed "s/^/[parse $repo] /" "$OUT/$repo/.parse.err" | tee -a "$LOG" >&2 || true
