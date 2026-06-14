@@ -10,5 +10,8 @@ if [ ! -f "%{name}.lang" ]; then \
   if [ -d "%{buildroot}%{_datadir}/locale" ]; then \
     find "%{buildroot}%{_datadir}/locale" -type f \\( -name "*.mo" -o -name "*.qm" \\) | sed "s#^%{buildroot}##" | LC_ALL=C sort > "%{name}.lang"; \
   fi; \
+fi; \
+if [ ! -f debugsourcefiles.list ]; then \
+  : > debugsourcefiles.list; \
 fi \
 %{nil}
