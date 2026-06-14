@@ -11,3 +11,6 @@ diff --git a/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec b/so
 +BuildRequires: qt6-qtbase-private-devel
 +BuildRequires: clang
 +BuildRequires: python3-setuptools
+@@ -101 +104 @@
+-%files -f %{name}.lang
++%files
