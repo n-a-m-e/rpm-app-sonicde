@@ -21,7 +21,7 @@ printf '%s\n' "$ROOT" > .q
 : > "$OUT/.task-sonicde.requires"
 : > "$LOG"
 
-log() { printf '%s\n' "$*" | tee -a "$LOG" >&2; }
+log() { printf '[%s] %s\n' "$(date -u +'%H:%M:%S')" "$*" | tee -a "$LOG" >&2; }
 key() { tr '[:upper:]' '[:lower:]' <<< "$1" | sed -E 's/[^a-z0-9]//g'; }
 wanted() { [[ "${1:-}" =~ [Ss]onic|[Ss]ilver ]]; }
 
@@ -30,8 +30,9 @@ make_repo_map() {
   tmp="$(mktemp)"
   : > "$tmp"
 
+  log "Building GitHub Sonic/Silver repo lookup"
   for u in "${SEARCHES[@]}"; do
-    log "github lookup: $u"
+    log "Fetching: $u"
     curl -fsSL --retry 3 --retry-delay 2 \
       -H 'Accept: application/vnd.github+json' \
       -H 'User-Agent: sonicde-build-queue' \
@@ -58,7 +59,7 @@ PY
 
   rm -f "$tmp"
   cp .repos.tsv "$OUT/.repo-map.tsv"
-  log "github lookup repos: $(wc -l < .repos.tsv)"
+  log "GitHub lookup repos: $(wc -l < .repos.tsv)"
 }
 
 repo_by_key() { awk -F '\t' -v k="$1" '$1==k{print $2; exit}' .repos.tsv; }
@@ -111,12 +112,12 @@ fetch() {
 
   for b in master main rolling; do
     if curl -fsSL "$(raw_url "$r" "$b")" -o "$OUT/$r/$r.spec" 2>/dev/null; then
-      log "fetched: $r ($b)"
+      log "Fetched spec: $r ($b)"
       return 0
     fi
   done
 
-  log "skip no spec: $r"
+  log "Skipped, no root spec: $r"
   rm -rf "$OUT/$r"
   return 1
 }
@@ -125,8 +126,10 @@ parse_spec() {
   local r="$1" spec="$OUT/$r/$r.spec" expanded="$OUT/$r/.expanded.spec"
   if [[ -f "$MACROS_FILE" ]] && command -v rpmspec >/dev/null 2>&1; then
     cat "$MACROS_FILE" "$spec" > "$OUT/$r/.with-compat.spec"
-    rpmspec --parse "$OUT/$r/.with-compat.spec" > "$expanded" 2>"$OUT/$r/.rpmspec.err" && return
-    log "warn rpmspec parse failed: $r"
+    if rpmspec --parse "$OUT/$r/.with-compat.spec" > "$expanded" 2>"$OUT/$r/.rpmspec.err"; then
+      return
+    fi
+    log "WARN: rpmspec parse failed for $r; using raw spec"
   fi
   cp "$spec" "$expanded"
 }
@@ -161,7 +164,10 @@ add_queue() {
   wanted "$d" || return
   r="$(repo "$d")"
   wanted "$r" || return
-  grep -Fxq "$r" .seen .q 2>/dev/null || { log "discover: $d -> $r"; echo "$r" >> .q; }
+  if ! grep -Fxq "$r" .seen .q 2>/dev/null; then
+    log "Discovered: $d -> $r"
+    echo "$r" >> .q
+  fi
 }
 
 add_root_req() {
@@ -205,9 +211,10 @@ EOF
 }
 
 copy_compat() {
-  [[ -f "specs/$COMPAT.spec" ]] || return
+  [[ -f "specs/$COMPAT.spec" ]] || { log "No compat spec found: specs/$COMPAT.spec"; return; }
   mkdir -p "$OUT/$COMPAT"
   cp "specs/$COMPAT.spec" "$OUT/$COMPAT/$COMPAT.spec"
+  log "Copied compat spec: $COMPAT"
 }
 
 toposort() {
@@ -215,12 +222,11 @@ toposort() {
 import sys
 from collections import defaultdict
 
-seen_file, deps_file = sys.argv[1], sys.argv[2]
-nodes = [x.strip() for x in open(seen_file) if x.strip()]
+nodes = [x.strip() for x in open(sys.argv[1]) if x.strip()]
 node_set = set(nodes)
 deps = defaultdict(set)
 
-for line in open(deps_file):
+for line in open(sys.argv[2]):
     line = line.rstrip("\n")
     if not line:
         continue
@@ -261,8 +267,10 @@ while [[ -s .q ]]; do
   echo "$r" >> .seen
   parse_spec "$r"
 
+  dep_count=0
   while read -r d; do
     [[ -n "$d" ]] || continue
+    dep_count=$((dep_count + 1))
 
     [[ "$r" == "$ROOT" ]] && add_root_req "$d"
 
@@ -273,26 +281,33 @@ while [[ -s .q ]]; do
     add_queue "$d"
     [[ "$rr" != "$r" ]] && printf '%s\t%s\n' "$rr" "$r" >> .deps
   done < <(deps "$r")
+
+  log "Processed $r dependencies: $dep_count"
 done
 
 write_task_spec
 copy_compat
 toposort
+
 cp .seen "$OUT/.seen"
 cp .deps "$OUT/.deps"
+log "Final order count: $(wc -l < "$OUT/.order")"
+sed 's/^/  order: /' "$OUT/.order" | tee -a "$LOG" >&2
+
 rm -f .q .seen .deps .repos.tsv
 
 (cd "$OUT"; git init -q; git add .; git -c user.name=builder -c user.email=builder@example.invalid commit --allow-empty -qm specs)
 
 url="file://$PWD/$OUT"
 commit="$(git -C "$OUT" rev-parse HEAD)"
+log "Specs commit: $commit"
 
 if [[ -f "$OUT/$COMPAT/$COMPAT.spec" ]]; then
-  log "queue: $COMPAT"
+  log "Queue first: $COMPAT"
   rpm-build-queue add --package "$COMPAT" --clone-url "$url" --commit "$commit" --subdir "$COMPAT" --spec "$COMPAT.spec"
 fi
 
 while read -r p; do
-  log "queue: $p"
+  log "Queue: $p"
   rpm-build-queue add --package "$p" --clone-url "$url" --commit "$commit" --subdir "$p" --spec "$p.spec"
 done < "$OUT/.order"
