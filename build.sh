@@ -155,7 +155,7 @@ index_repo(){
 
 deps(){
   local repo="$1" line word
-  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires|Recommends|Suggests)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$OUT/$repo/.expanded.spec" |
+  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$OUT/$repo/.expanded.spec" |
   while read -r line; do
     line="${line#\(}"; line="${line%\)}"
     line="${line%% if *}"; line="${line%% or *}"; line="${line%% and *}"
@@ -198,6 +198,7 @@ walk(){
     grep -Fxq "$repo" .processed 2>/dev/null && continue
     [[ -f "$OUT/$repo/.expanded.spec" ]] || die "repo not indexed: $repo"
 
+    log "Processing repo: $repo"
     echo "$repo" >> .processed
 
     while read -r dep; do
@@ -205,7 +206,7 @@ walk(){
       wanted "$dep" || continue
 
       prov="$(provider "$dep")"
-      [[ -n "$prov" ]] || die "no provider for dependency: $dep"
+      [[ -n "$prov" ]] || die "no provider for dependency '$dep' while processing repo '$repo'"
 
       if [[ "$repo" == "$ROOT" && "$prov" != "$ROOT" ]]; then
         grep -Fxq "$prov" "$OUT/.task-sonicde.requires" 2>/dev/null || echo "$prov" >> "$OUT/.task-sonicde.requires"
