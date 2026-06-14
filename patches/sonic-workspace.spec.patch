@@ -1,11 +1,6 @@
 diff --git a/sonic-workspace/sonic-workspace.spec b/sonic-workspace/sonic-workspace.spec
 --- a/sonic-workspace/sonic-workspace.spec
 +++ b/sonic-workspace/sonic-workspace.spec
-@@ -123 +122,0 @@
--BuildRequires: pkgconfig(dbusmenu-qt6)
-@@ -117 +117 @@
--BuildRequires: %mklibname -d KF6IconWidgets
-+BuildRequires: kf6-kiconthemes-devel
 @@ -183,3 +183,3 @@
 -Requires: distro-release-theme
 -Requires: qt6-qttools-dbus
