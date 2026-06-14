@@ -161,9 +161,9 @@ deps() {
 
 add_queue() {
   local d="$1" r
-  wanted "$d" || return
+  wanted "$d" || return 0
   r="$(repo "$d")"
-  wanted "$r" || return
+  wanted "$r" || return 0
   if ! grep -Fxq "$r" .seen .q 2>/dev/null; then
     log "Discovered: $d -> $r"
     echo "$r" >> .q
@@ -172,10 +172,10 @@ add_queue() {
 
 add_root_req() {
   local d="$1" r
-  wanted "$d" || return
+  wanted "$d" || return 0
   r="$(repo "$d")"
-  [[ "$r" == "$ROOT" ]] && return
-  wanted "$r" || return
+  [[ "$r" == "$ROOT" ]] && return 0
+  wanted "$r" || return 0
   grep -Fxq "$r" "$OUT/.task-sonicde.requires" 2>/dev/null || echo "$r" >> "$OUT/.task-sonicde.requires"
 }
 
@@ -211,7 +211,7 @@ EOF
 }
 
 copy_compat() {
-  [[ -f "specs/$COMPAT.spec" ]] || { log "No compat spec found: specs/$COMPAT.spec"; return; }
+  [[ -f "specs/$COMPAT.spec" ]] || { log "No compat spec found: specs/$COMPAT.spec"; return 0; }
   mkdir -p "$OUT/$COMPAT"
   cp "specs/$COMPAT.spec" "$OUT/$COMPAT/$COMPAT.spec"
   log "Copied compat spec: $COMPAT"
@@ -272,7 +272,9 @@ while [[ -s .q ]]; do
     [[ -n "$d" ]] || continue
     dep_count=$((dep_count + 1))
 
-    [[ "$r" == "$ROOT" ]] && add_root_req "$d"
+    if [[ "$r" == "$ROOT" ]]; then
+      add_root_req "$d"
+    fi
 
     wanted "$d" || continue
     rr="$(repo "$d")"
