@@ -31,6 +31,7 @@ need(){
   command -v curl >/dev/null || die "curl missing"
   command -v python3 >/dev/null || die "python3 missing"
   command -v rpmspec >/dev/null || die "rpmspec missing"
+  command -v tar >/dev/null || die "tar missing"
   command -v patch >/dev/null || die "patch missing"
   [[ -f "$MACROS_FILE" ]] || die "macro file missing: $MACROS_FILE"
   [[ -d "$PATCH_DIR" ]] || log "No patch directory found: $PATCH_DIR"
@@ -134,26 +135,46 @@ verify_all_patches_applied(){
   [[ "$missing" -eq 0 ]] || die "one or more patch files were not applied"
 }
 
+archive_url(){
+  local repo="$1" branch="$2" u name
+  u="$(repo_url "$repo")"
+  [[ "$u" =~ ^https://github.com/([^/]+)/([^/]+)$ ]] || die "bad/missing GitHub URL for $repo"
+  name="${BASH_REMATCH[2]}"
+  printf 'https://codeload.github.com/%s/%s/tar.gz/%s
+' "${BASH_REMATCH[1]}" "$name" "$branch"
+}
+
 fetch_parse(){
-  local repo="$1" branch
-  mkdir -p "$OUT/$repo"
+  local repo="$1" branch tmp
+  tmp="$(mktemp -d)"
 
   for branch in master main rolling; do
-    if curl -fsSL "$(raw_url "$repo" "$branch")" -o "$OUT/$repo/$repo.spec" 2>"$OUT/$repo/.curl-$branch.err"; then
-      log "Fetched $repo ($branch)"
-      apply_repo_patch "$repo"
-      cat "$MACROS_FILE" "$OUT/$repo/$repo.spec" > "$OUT/$repo/.with-compat.spec"
+    rm -rf "$OUT/$repo" "$tmp/repo.tar.gz"
+    mkdir -p "$OUT/$repo"
 
-      if ! rpmspec --parse "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.expanded.spec" 2>"$OUT/$repo/.parse.err"; then
-        sed "s/^/[parse $repo] /" "$OUT/$repo/.parse.err" | tee -a "$LOG" >&2 || true
-        die "rpmspec --parse failed: $repo"
+    if curl -fsSL "$(archive_url "$repo" "$branch")" -o "$tmp/repo.tar.gz" 2>"$OUT/$repo/.curl-$branch.err"; then
+      if tar -xzf "$tmp/repo.tar.gz" -C "$OUT/$repo" --strip-components=1 2>"$OUT/$repo/.tar-$branch.err"; then
+        if [[ -f "$OUT/$repo/$repo.spec" ]]; then
+          log "Fetched full repo: $repo ($branch)"
+          rm -rf "$tmp"
+
+          apply_repo_patch "$repo"
+
+          cat "$MACROS_FILE" "$OUT/$repo/$repo.spec" > "$OUT/$repo/.with-compat.spec"
+
+          if ! rpmspec --parse "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.expanded.spec" 2>"$OUT/$repo/.parse.err"; then
+            sed "s/^/[parse $repo] /" "$OUT/$repo/.parse.err" | tee -a "$LOG" >&2 || true
+            die "rpmspec --parse failed: $repo"
+          fi
+
+          return
+        fi
       fi
-
-      return
     fi
   done
 
-  die "could not fetch root spec: $repo"
+  rm -rf "$tmp" "$OUT/$repo"
+  die "could not fetch full repo with root spec: $repo"
 }
 
 clean(){
@@ -223,7 +244,7 @@ provider(){
 
 download_index_all(){
   local repo
-  log "Downloading and indexing all relevant specs"
+  log "Downloading full repos and indexing specs"
 
   while read -r repo; do
     fetch_parse "$repo"
