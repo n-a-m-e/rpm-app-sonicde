@@ -1,7 +1,9 @@
 diff --git a/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec b/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec
 --- a/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec
 +++ b/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec
+@@ -24 +24 @@
+-BuildRequires: cmake(ECM)
++BuildRequires: extra-cmake-modules
 @@ -28 +28 @@
 -BuildRequires: python%{pyver}dist(build)
 +BuildRequires: python3-build
-
