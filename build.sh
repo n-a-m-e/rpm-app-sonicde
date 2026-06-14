@@ -95,11 +95,11 @@ repo_raw_url() {
 
 fetch() {
   local r="$1" b
-  mkdir -p "$OUT/$1"
+  mkdir -p "$OUT/$r"
   for b in master main rolling; do
-    curl -fsSL "$(repo_raw_url "$r" "$b")" -o "$OUT/$1/$1.spec" 2>/dev/null && return 0
+    curl -fsSL "$(repo_raw_url "$r" "$b")" -o "$OUT/$r/$r.spec" 2>/dev/null && return 0
   done
-  rm -rf "$OUT/$1"
+  rm -rf "$OUT/$r"
   return 1
 }
 
@@ -181,7 +181,7 @@ clean() {
   x="${x//%\{_lib\}/lib}"
   x="${x//%_lib/lib}"
 
-  sed -E 's/#.*//;s/%\{[^}]+\}//g;s/[<>=].*//;s/^[[:space:]("'\'']+//;s/[[:space:],)"'\'']+$//' <<< "$x" |
+  sed -E 's/#.*//;s/%\{[^}]+\}//g;s/[<>=].*//;s/^[[:space:]("'"'"']+//;s/[[:space:],)"'"'"']+$//' <<< "$x" |
     awk '{print $1}'
 }
 
@@ -235,7 +235,7 @@ write_task_spec() {
   local spec="$OUT/$ROOT/$ROOT.spec"
   sort -u "$OUT/.task-sonicde.requires" -o "$OUT/.task-sonicde.requires"
 
-  cat > "$spec" <<'EOF'
+  cat > "$spec" <<'EOF2'
 Name:           task-sonicde
 Version:        1
 Release:        1%{?dist}
@@ -243,13 +243,13 @@ Summary:        SonicDE desktop environment metapackage
 License:        MIT
 BuildArch:      noarch
 
-EOF
+EOF2
 
   while read -r p; do
     [[ -n "$p" ]] && printf 'Requires:       %s\n' "$p" >> "$spec"
   done < "$OUT/.task-sonicde.requires"
 
-  cat >> "$spec" <<'EOF'
+  cat >> "$spec" <<'EOF2'
 
 %description
 Metapackage that installs the SonicDE and Silver packages selected from the
@@ -259,7 +259,7 @@ OpenMandriva task-sonicde dependency set.
 %build
 %install
 %files
-EOF
+EOF2
 }
 
 toposort() {
@@ -284,7 +284,10 @@ toposort() {
     {
       dep=$1; pkg=$2
       if (dep == "" || pkg == "" || dep == pkg) next
-      node[dep]=1; node[pkg]=1
+      # Only include edges where both endpoints were actually fetched.
+      # This prevents GitHub-search matches without a root .spec from being
+      # queued and then failing as Missing subdir.
+      if (!(dep in node) || !(pkg in node)) next
       children[pkg]=children[pkg] SUBSEP dep
     }
     END {
@@ -309,9 +312,11 @@ while [[ -s .q ]]; do
   sed -i '1d' .q
 
   grep -Fxq "$r" .seen 2>/dev/null && continue
-  echo "$r" >> .seen
 
+  # Important: only mark repos seen after fetch succeeds. Otherwise the
+  # topological order may include repos that never made it into $OUT.
   fetch "$r" || continue
+  echo "$r" >> .seen
   parse_spec "$r"
 
   while read -r d; do
