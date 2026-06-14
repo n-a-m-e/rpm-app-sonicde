@@ -2,7 +2,6 @@
 set -euo pipefail
 
 OUT=sonicde-specs
-ORG=OpenMandrivaAssociation
 ROOT=task-sonicde
 COMPAT=openmandriva-buildrequires-compat
 MACROS_FILE="${MACROS_FILE:-macros/openmandriva-compat.macros}"
@@ -13,30 +12,38 @@ SEARCHES=(
   'https://api.github.com/search/repositories?q=silver%20in:name,description+org:OpenMandrivaAssociation&per_page=100'
 )
 
-rm -rf "$OUT" .q .seen .deps .repos.tsv "$LOG"
+rm -rf "$OUT" .repos.tsv .providers.tsv .processed .deps "$LOG"
 mkdir -p "$OUT"
-printf '%s\n' "$ROOT" > .q
-: > .seen
+: > .providers.tsv
+: > .processed
 : > .deps
 : > "$OUT/.task-sonicde.requires"
 : > "$LOG"
 
-log() { printf '[%s] %s\n' "$(date -u +'%H:%M:%S')" "$*" | tee -a "$LOG" >&2; }
-key() { tr '[:upper:]' '[:lower:]' <<< "$1" | sed -E 's/[^a-z0-9]//g'; }
-wanted() { [[ "${1:-}" =~ [Ss]onic|[Ss]ilver ]]; }
+log(){ printf '[%s] %s\n' "$(date -u +'%H:%M:%S')" "$*" | tee -a "$LOG" >&2; }
+die(){ log "ERROR: $*"; exit 1; }
+key(){ tr '[:upper:]' '[:lower:]' <<< "$1" | sed -E 's/[^a-z0-9]//g'; }
+wanted(){ [[ "${1:-}" =~ [Ss]onic|[Ss]ilver ]]; }
 
-make_repo_map() {
+need(){
+  command -v curl >/dev/null || die "curl missing"
+  command -v python3 >/dev/null || die "python3 missing"
+  command -v rpmspec >/dev/null || die "rpmspec missing"
+  [[ -f "$MACROS_FILE" ]] || die "macro file missing: $MACROS_FILE"
+  [[ -f "specs/$COMPAT.spec" ]] || die "compat spec missing: specs/$COMPAT.spec"
+}
+
+github_repos(){
   local tmp u
   tmp="$(mktemp)"
   : > "$tmp"
 
-  log "Building GitHub Sonic/Silver repo lookup"
+  log "GitHub lookup"
   for u in "${SEARCHES[@]}"; do
-    log "Fetching: $u"
     curl -fsSL --retry 3 --retry-delay 2 \
       -H 'Accept: application/vnd.github+json' \
       -H 'User-Agent: sonicde-build-queue' \
-      "$u" >> "$tmp"
+      "$u" >> "$tmp" || die "GitHub lookup failed: $u"
     echo >> "$tmp"
   done
 
@@ -49,8 +56,7 @@ while True:
     if pos >= len(s): break
     obj, pos = dec.raw_decode(s, pos)
     for it in obj.get("items", []):
-        name = it.get("name") or ""
-        url = it.get("html_url") or ""
+        name, url = it.get("name") or "", it.get("html_url") or ""
         k = re.sub(r"[^a-z0-9]", "", name.lower())
         if name and url and k not in seen:
             seen.add(k)
@@ -58,85 +64,43 @@ while True:
 PY
 
   rm -f "$tmp"
+  [[ -s .repos.tsv ]] || die "GitHub lookup returned no repos"
+  awk -F '\t' '{print $2}' .repos.tsv | sort -u > "$OUT/.all-repos"
   cp .repos.tsv "$OUT/.repo-map.tsv"
-  log "GitHub lookup repos: $(wc -l < .repos.tsv)"
+  log "Repos found: $(wc -l < "$OUT/.all-repos")"
 }
 
-repo_by_key() { awk -F '\t' -v k="$1" '$1==k{print $2; exit}' .repos.tsv; }
-url_by_repo() { awk -F '\t' -v k="$(key "$1")" '$1==k{print $3; exit}' .repos.tsv; }
-
-dep_base() {
-  local d="$1"
-  d="${d%-devel}"
-  d="${d#pkgconfig(}"; d="${d#cmake(}"; d="${d%)}"
-  d="${d#lib64}"; d="${d#lib}"
-  printf '%s\n' "$d"
+repo_url(){
+  awk -F '\t' -v k="$(key "$1")" '$1==k{print $3; exit}' .repos.tsv
 }
 
-repo_candidates() {
-  local d b
-  d="$(dep_base "$1")"
-  [[ "$d" == task-sonicde-minimal ]] && { echo "$ROOT"; return; }
-
-  echo "$d"
-  b="${d#SonicFrameworks}"; [[ "$b" != "$d" ]] && echo "sonic-frameworks-$b"
-  b="${d#SonicDE}";         [[ "$b" != "$d" ]] && echo "sonic-$b"
-  b="${d#Sonic}";           [[ "$b" != "$d" ]] && echo "sonic-$b"
-  b="${d#Silver}";          [[ "$b" != "$d" ]] && echo "silver-$b"
+raw_url(){
+  local repo="$1" branch="$2" u name
+  u="$(repo_url "$repo")"
+  [[ "$u" =~ ^https://github.com/([^/]+)/([^/]+)$ ]] || die "bad/missing GitHub URL for $repo"
+  name="${BASH_REMATCH[2]}"
+  printf 'https://raw.githubusercontent.com/%s/%s/%s/%s.spec\n' "${BASH_REMATCH[1]}" "$name" "$branch" "$name"
 }
 
-repo() {
-  local c r
-  while read -r c; do
-    r="$(repo_by_key "$(key "$c")")"
-    [[ -n "$r" ]] && { echo "$r"; return; }
-  done < <(repo_candidates "$1")
-  dep_base "$1"
-}
+fetch_parse(){
+  local repo="$1" branch
+  mkdir -p "$OUT/$repo"
 
-raw_url() {
-  local r="$1" b="$2" u repo_name
-  u="$(url_by_repo "$r")"
-
-  if [[ "$u" =~ ^https://github.com/([^/]+)/([^/]+)$ ]]; then
-    repo_name="${BASH_REMATCH[2]}"
-    printf 'https://raw.githubusercontent.com/%s/%s/%s/%s.spec\n' "${BASH_REMATCH[1]}" "$repo_name" "$b" "$repo_name"
-  else
-    printf 'https://raw.githubusercontent.com/%s/%s/%s/%s.spec\n' "$ORG" "$r" "$b" "$r"
-  fi
-}
-
-fetch() {
-  local r="$1" b
-  mkdir -p "$OUT/$r"
-
-  for b in master main rolling; do
-    if curl -fsSL "$(raw_url "$r" "$b")" -o "$OUT/$r/$r.spec" 2>/dev/null; then
-      log "Fetched spec: $r ($b)"
-      return 0
+  for branch in master main rolling; do
+    if curl -fsSL "$(raw_url "$repo" "$branch")" -o "$OUT/$repo/$repo.spec" 2>"$OUT/$repo/.curl-$branch.err"; then
+      log "Fetched $repo ($branch)"
+      cat "$MACROS_FILE" "$OUT/$repo/$repo.spec" > "$OUT/$repo/.with-compat.spec"
+      rpmspec --parse "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.expanded.spec" 2>"$OUT/$repo/.parse.err" || die "rpmspec --parse failed: $repo"
+      return
     fi
   done
 
-  log "Skipped, no root spec: $r"
-  rm -rf "$OUT/$r"
-  return 1
+  die "could not fetch root spec: $repo"
 }
 
-parse_spec() {
-  local r="$1" spec="$OUT/$r/$r.spec" expanded="$OUT/$r/.expanded.spec"
-  if [[ -f "$MACROS_FILE" ]] && command -v rpmspec >/dev/null 2>&1; then
-    cat "$MACROS_FILE" "$spec" > "$OUT/$r/.with-compat.spec"
-    if rpmspec --parse "$OUT/$r/.with-compat.spec" > "$expanded" 2>"$OUT/$r/.rpmspec.err"; then
-      return
-    fi
-    log "WARN: rpmspec parse failed for $r; using raw spec"
-  fi
-  cp "$spec" "$expanded"
-}
-
-clean_dep() {
-  local x="$1" r="$2"
-  x="${x//%\{name\}/$r}"
+clean(){
+  local x="$1" repo="${2:-}"
+  [[ -n "$repo" ]] && x="${x//%\{name\}/$repo}"
   x="${x//%\{?_isa\}/}"
   x="${x//%\{EVRD\}/}"
   x="${x//%\{_lib\}/lib}"
@@ -144,46 +108,100 @@ clean_dep() {
   sed -E 's/#.*//;s/%\{[^}]+\}//g;s/[<>=].*//;s/^[[:space:]("'"'"']+//;s/[[:space:],)"'"'"']+$//' <<< "$x" | awk '{print $1}'
 }
 
-deps() {
-  local r="$1" l w
-  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires|Recommends|Suggests)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$OUT/$r/.expanded.spec" |
-  while read -r l; do
-    l="${l#\(}"; l="${l%\)}"
-    l="${l%% if *}"; l="${l%% or *}"; l="${l%% and *}"
+add_provider(){
+  local p="$1" repo="$2" old
+  [[ -n "$p" ]] || return 0
+  old="$(awk -F '\t' -v p="$p" '$1==p{print $2; exit}' .providers.tsv)"
+  [[ -z "$old" || "$old" == "$repo" ]] || die "ambiguous provider '$p': $old and $repo"
+  [[ -n "$old" ]] || printf '%s\t%s\n' "$p" "$repo" >> .providers.tsv
+}
 
-    if [[ "$l" =~ [[:space:]](>=|<=|=|>|<)[[:space:]] ]]; then
-      clean_dep "$l" "$r"
+index_repo(){
+  local repo="$1"
+  rpmspec -q --qf '%{NAME}\n' "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.names" 2>"$OUT/$repo/.query.err" || die "rpmspec -q failed: $repo"
+
+  while read -r p; do add_provider "$p" "$repo"; done < "$OUT/$repo/.names"
+
+  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*Provides[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$OUT/$repo/.expanded.spec" |
+  while read -r line; do clean "$line" "$repo"; done |
+  while read -r p; do add_provider "$p" "$repo"; done
+}
+
+deps(){
+  local repo="$1" line word
+  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires|Recommends|Suggests)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$OUT/$repo/.expanded.spec" |
+  while read -r line; do
+    line="${line#\(}"; line="${line%\)}"
+    line="${line%% if *}"; line="${line%% or *}"; line="${line%% and *}"
+    if [[ "$line" =~ [[:space:]](>=|<=|=|>|<)[[:space:]] ]]; then
+      clean "$line" "$repo"
     else
-      for w in $l; do clean_dep "$w" "$r"; done
+      for word in $line; do clean "$word" "$repo"; done
     fi
   done
 }
 
-add_queue() {
-  local d="$1" r
-  wanted "$d" || return 0
-  r="$(repo "$d")"
-  wanted "$r" || return 0
-  if ! grep -Fxq "$r" .seen .q 2>/dev/null; then
-    log "Discovered: $d -> $r"
-    echo "$r" >> .q
-  fi
+provider(){
+  awk -F '\t' -v p="$1" '$1==p{print $2; exit}' .providers.tsv
 }
 
-add_root_req() {
-  local d="$1" r
-  wanted "$d" || return 0
-  r="$(repo "$d")"
-  [[ "$r" == "$ROOT" ]] && return 0
-  wanted "$r" || return 0
-  grep -Fxq "$r" "$OUT/.task-sonicde.requires" 2>/dev/null || echo "$r" >> "$OUT/.task-sonicde.requires"
+download_index_all(){
+  local repo
+  log "Downloading and indexing all specs"
+  while read -r repo; do
+    fetch_parse "$repo"
+    index_repo "$repo"
+  done < "$OUT/.all-repos"
+
+  sort -u .providers.tsv -o .providers.tsv
+  cp .providers.tsv "$OUT/.providers.tsv"
+  log "Providers indexed: $(wc -l < .providers.tsv)"
 }
 
-write_task_spec() {
+walk(){
+  local q repo dep prov
+  q="$(mktemp)"
+  echo "$ROOT" > "$q"
+
+  log "Resolving dependency closure from $ROOT"
+
+  while [[ -s "$q" ]]; do
+    repo="$(head -n1 "$q")"
+    sed -i '1d' "$q"
+    grep -Fxq "$repo" .processed 2>/dev/null && continue
+    [[ -f "$OUT/$repo/.expanded.spec" ]] || die "repo not indexed: $repo"
+
+    echo "$repo" >> .processed
+
+    while read -r dep; do
+      [[ -n "$dep" ]] || continue
+      wanted "$dep" || continue
+
+      prov="$(provider "$dep")"
+      [[ -n "$prov" ]] || die "no provider for dependency: $dep"
+
+      if [[ "$repo" == "$ROOT" && "$prov" != "$ROOT" ]]; then
+        grep -Fxq "$prov" "$OUT/.task-sonicde.requires" 2>/dev/null || echo "$prov" >> "$OUT/.task-sonicde.requires"
+      fi
+
+      [[ "$prov" != "$repo" ]] && printf '%s\t%s\n' "$prov" "$repo" >> .deps
+
+      if wanted "$prov" && ! grep -Fxq "$prov" .processed "$q" 2>/dev/null; then
+        log "$repo needs $dep -> $prov"
+        echo "$prov" >> "$q"
+      fi
+    done < <(deps "$repo")
+  done
+
+  rm -f "$q"
+}
+
+write_task(){
   local spec="$OUT/$ROOT/$ROOT.spec"
   sort -u "$OUT/.task-sonicde.requires" -o "$OUT/.task-sonicde.requires"
 
-  cat > "$spec" <<'EOF'
+  {
+    cat <<'EOF'
 Name:           task-sonicde
 Version:        1
 Release:        1%{?dist}
@@ -192,12 +210,8 @@ License:        MIT
 BuildArch:      noarch
 
 EOF
-
-  while read -r p; do
-    [[ -n "$p" ]] && printf 'Requires:       %s\n' "$p" >> "$spec"
-  done < "$OUT/.task-sonicde.requires"
-
-  cat >> "$spec" <<'EOF'
+    while read -r p; do [[ -n "$p" ]] && printf 'Requires:       %s\n' "$p"; done < "$OUT/.task-sonicde.requires"
+    cat <<'EOF'
 
 %description
 Metapackage that installs the SonicDE and Silver packages selected from the
@@ -208,108 +222,66 @@ OpenMandriva task-sonicde dependency set.
 %install
 %files
 EOF
+  } > "$spec"
 }
 
-copy_compat() {
-  [[ -f "specs/$COMPAT.spec" ]] || { log "No compat spec found: specs/$COMPAT.spec"; return 0; }
-  mkdir -p "$OUT/$COMPAT"
-  cp "specs/$COMPAT.spec" "$OUT/$COMPAT/$COMPAT.spec"
-  log "Copied compat spec: $COMPAT"
-}
-
-toposort() {
-  python3 - .seen .deps > "$OUT/.order" <<'PY'
+toposort(){
+  python3 - .processed .deps > "$OUT/.order" <<'PY'
 import sys
 from collections import defaultdict
-
 nodes = [x.strip() for x in open(sys.argv[1]) if x.strip()]
-node_set = set(nodes)
-deps = defaultdict(set)
-
+node_set, deps = set(nodes), defaultdict(set)
 for line in open(sys.argv[2]):
-    line = line.rstrip("\n")
-    if not line:
-        continue
-    dep, pkg = line.split("\t", 1)
+    if not line.strip(): continue
+    dep, pkg = line.rstrip("\n").split("\t", 1)
     if dep in node_set and pkg in node_set and dep != pkg:
         deps[pkg].add(dep)
 
 done, visiting, out = set(), set(), []
-
 def visit(n):
-    if n in done:
-        return
-    if n in visiting:
-        print(f"dependency cycle involving {n}", file=sys.stderr)
-        return
+    if n in done: return
+    if n in visiting: raise SystemExit(f"dependency cycle involving {n}")
     visiting.add(n)
-    for d in sorted(deps[n]):
-        visit(d)
+    for d in sorted(deps[n]): visit(d)
     visiting.remove(n)
     done.add(n)
     out.append(n)
 
-for n in nodes:
-    visit(n)
-
+for n in nodes: visit(n)
 print("\n".join(out))
 PY
 }
 
-make_repo_map
+commit_and_queue(){
+  mkdir -p "$OUT/$COMPAT"
+  cp "specs/$COMPAT.spec" "$OUT/$COMPAT/$COMPAT.spec"
 
-while [[ -s .q ]]; do
-  r="$(head -n1 .q)"
-  sed -i '1d' .q
-  grep -Fxq "$r" .seen 2>/dev/null && continue
+  cp .processed "$OUT/.processed"
+  cp .deps "$OUT/.deps"
 
-  fetch "$r" || continue
-  echo "$r" >> .seen
-  parse_spec "$r"
+  log "Final order: $(wc -l < "$OUT/.order") packages"
+  sed 's/^/  /' "$OUT/.order" | tee -a "$LOG" >&2
 
-  dep_count=0
-  while read -r d; do
-    [[ -n "$d" ]] || continue
-    dep_count=$((dep_count + 1))
+  rm -f .repos.tsv .providers.tsv .processed .deps
 
-    if [[ "$r" == "$ROOT" ]]; then
-      add_root_req "$d"
-    fi
+  (cd "$OUT"; git init -q; git add .; git -c user.name=builder -c user.email=builder@example.invalid commit --allow-empty -qm specs)
 
-    wanted "$d" || continue
-    rr="$(repo "$d")"
-    wanted "$rr" || continue
+  url="file://$PWD/$OUT"
+  commit="$(git -C "$OUT" rev-parse HEAD)"
 
-    add_queue "$d"
-    [[ "$rr" != "$r" ]] && printf '%s\t%s\n' "$rr" "$r" >> .deps
-  done < <(deps "$r")
-
-  log "Processed $r dependencies: $dep_count"
-done
-
-write_task_spec
-copy_compat
-toposort
-
-cp .seen "$OUT/.seen"
-cp .deps "$OUT/.deps"
-log "Final order count: $(wc -l < "$OUT/.order")"
-sed 's/^/  order: /' "$OUT/.order" | tee -a "$LOG" >&2
-
-rm -f .q .seen .deps .repos.tsv
-
-(cd "$OUT"; git init -q; git add .; git -c user.name=builder -c user.email=builder@example.invalid commit --allow-empty -qm specs)
-
-url="file://$PWD/$OUT"
-commit="$(git -C "$OUT" rev-parse HEAD)"
-log "Specs commit: $commit"
-
-if [[ -f "$OUT/$COMPAT/$COMPAT.spec" ]]; then
   log "Queue first: $COMPAT"
   rpm-build-queue add --package "$COMPAT" --clone-url "$url" --commit "$commit" --subdir "$COMPAT" --spec "$COMPAT.spec"
-fi
 
-while read -r p; do
-  log "Queue: $p"
-  rpm-build-queue add --package "$p" --clone-url "$url" --commit "$commit" --subdir "$p" --spec "$p.spec"
-done < "$OUT/.order"
+  while read -r repo; do
+    log "Queue: $repo"
+    rpm-build-queue add --package "$repo" --clone-url "$url" --commit "$commit" --subdir "$repo" --spec "$repo.spec"
+  done < "$OUT/.order"
+}
+
+need
+github_repos
+download_index_all
+walk
+write_task
+toposort
+commit_and_queue
