@@ -49,6 +49,7 @@ Provides:       kwin-aurorae
 Provides:       pythondist(build)
 Provides:       libxml2-utils
 Provides:       cmake(ECM)
+Provides:       pkgconfig(dbusmenu-qt6)
 
 %description
 Compatibility package that satisfies OpenMandriva-style dependency names
