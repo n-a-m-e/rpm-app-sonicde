@@ -3,89 +3,83 @@ set -euo pipefail
 
 OUT=sonicde-specs
 ORG=OpenMandrivaAssociation
-MATCH='sonic|silver'
 ROOT=task-sonicde
-COMPAT_PKG=openmandriva-buildrequires-compat
+COMPAT=openmandriva-buildrequires-compat
 MACROS_FILE="${MACROS_FILE:-macros/openmandriva-compat.macros}"
+SEARCHES=(
+  'https://api.github.com/search/repositories?q=sonic%20in:name,description+org:OpenMandrivaAssociation&per_page=100'
+  'https://api.github.com/search/repositories?q=silver%20in:name,description+org:OpenMandrivaAssociation&per_page=100'
+)
 
-SONIC_SEARCH_URL='https://api.github.com/search/repositories?q=sonic%20in:name,description+org:OpenMandrivaAssociation&per_page=100'
-SILVER_SEARCH_URL='https://api.github.com/search/repositories?q=silver%20in:name,description+org:OpenMandrivaAssociation&per_page=100'
-
-rm -rf "$OUT" .q .seen .deps .repo-map.tsv
+rm -rf "$OUT" .q .seen .deps .repos.tsv
 mkdir -p "$OUT"
-echo "$ROOT" > .q
+printf '%s\n' "$ROOT" > .q
 : > .seen
 : > .deps
 : > "$OUT/.task-sonicde.requires"
 
-norm_key() {
-  tr '[:upper:]' '[:lower:]' <<< "$1" | sed -E 's/[^a-z0-9]//g'
-}
+key() { tr '[:upper:]' '[:lower:]' <<< "$1" | sed -E 's/[^a-z0-9]//g'; }
+wanted() { [[ "${1:-}" =~ [Ss]onic|[Ss]ilver ]]; }
 
-build_repo_lookup() {
+make_repo_map() {
   local tmp
   tmp="$(mktemp)"
-
-  {
-    curl -fsSL "$SONIC_SEARCH_URL"
-    echo
-    curl -fsSL "$SILVER_SEARCH_URL"
-  } > "$tmp"
-
-  python3 - "$tmp" > .repo-map.tsv <<'PY'
-import json
-import re
-import sys
-
-path = sys.argv[1]
-text = open(path, "r", encoding="utf-8", errors="replace").read()
-
-decoder = json.JSONDecoder()
-pos = 0
-seen = set()
-
+  for u in "${SEARCHES[@]}"; do curl -fsSL "$u"; echo; done > "$tmp"
+  python3 - "$tmp" > .repos.tsv <<'PY'
+import json, re, sys
+s = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+dec, pos, seen = json.JSONDecoder(), 0, set()
 while True:
-    while pos < len(text) and text[pos].isspace():
-        pos += 1
-    if pos >= len(text):
-        break
-
-    obj, end = decoder.raw_decode(text, pos)
-    pos = end
-
-    for item in obj.get("items", []):
-        name = item.get("name") or ""
-        url = item.get("html_url") or item.get("clone_url") or item.get("url") or ""
-        if not name or not url:
-            continue
-
-        key = re.sub(r"[^a-z0-9]", "", name.lower())
-        if key in seen:
-            continue
-        seen.add(key)
-
-        print(f"{key}\t{name}\t{url}")
+    while pos < len(s) and s[pos].isspace(): pos += 1
+    if pos >= len(s): break
+    obj, pos = dec.raw_decode(s, pos)
+    for it in obj.get("items", []):
+        name = it.get("name") or ""
+        url = it.get("html_url") or ""
+        k = re.sub(r"[^a-z0-9]", "", name.lower())
+        if name and url and k not in seen:
+            seen.add(k)
+            print(f"{k}\t{name}\t{url}")
 PY
-
   rm -f "$tmp"
 }
 
-repo_from_key() {
-  local key="$1"
-  awk -F '\t' -v k="$key" '$1 == k { print $2; exit }' .repo-map.tsv
+repo_by_key() { awk -F '\t' -v k="$1" '$1==k{print $2; exit}' .repos.tsv; }
+url_by_repo() { awk -F '\t' -v k="$(key "$1")" '$1==k{print $3; exit}' .repos.tsv; }
+
+dep_base() {
+  local d="$1"
+  d="${d%-devel}"
+  d="${d#pkgconfig(}"; d="${d#cmake(}"; d="${d%)}"
+  d="${d#lib64}"; d="${d#lib}"
+  printf '%s\n' "$d"
 }
 
-repo_url_from_name() {
-  local name="$1" key
-  key="$(norm_key "$name")"
-  awk -F '\t' -v k="$key" '$1 == k { print $3; exit }' .repo-map.tsv
+repo_candidates() {
+  local d b
+  d="$(dep_base "$1")"
+  [[ "$d" == task-sonicde-minimal ]] && { echo "$ROOT"; return; }
+  echo "$d"
+
+  b="${d#SonicFrameworks}"; [[ "$b" != "$d" ]] && echo "sonic-frameworks-$b"
+  b="${d#SonicDE}";         [[ "$b" != "$d" ]] && echo "sonic-$b"
+  b="${d#Sonic}";           [[ "$b" != "$d" ]] && echo "sonic-$b"
+  b="${d#Silver}";          [[ "$b" != "$d" ]] && echo "silver-$b"
 }
 
-repo_raw_url() {
-  local r="$1" b="$2" url repo_name
-  url="$(repo_url_from_name "$r")"
+repo() {
+  local c r
+  while read -r c; do
+    r="$(repo_by_key "$(key "$c")")"
+    [[ -n "$r" ]] && { echo "$r"; return; }
+  done < <(repo_candidates "$1")
+  dep_base "$1"
+}
 
-  if [[ "$url" =~ ^https://github.com/([^/]+)/([^/]+)$ ]]; then
+raw_url() {
+  local r="$1" b="$2" u repo_name
+  u="$(url_by_repo "$r")"
+  if [[ "$u" =~ ^https://github.com/([^/]+)/([^/]+)$ ]]; then
     repo_name="${BASH_REMATCH[2]}"
     printf 'https://raw.githubusercontent.com/%s/%s/%s/%s.spec\n' "${BASH_REMATCH[1]}" "$repo_name" "$b" "$repo_name"
   else
@@ -97,145 +91,62 @@ fetch() {
   local r="$1" b
   mkdir -p "$OUT/$r"
   for b in master main rolling; do
-    curl -fsSL "$(repo_raw_url "$r" "$b")" -o "$OUT/$r/$r.spec" 2>/dev/null && return 0
+    curl -fsSL "$(raw_url "$r" "$b")" -o "$OUT/$r/$r.spec" 2>/dev/null && return 0
   done
   rm -rf "$OUT/$r"
   return 1
 }
 
 parse_spec() {
-  local r="$1" raw="$OUT/$r/$r.spec" combined="$OUT/$r/.with-compat.spec" expanded="$OUT/$r/.expanded.spec"
-
-  if [[ -f "$MACROS_FILE" ]] && command -v rpmspec >/dev/null 2>&1; then
-    cat "$MACROS_FILE" "$raw" > "$combined"
-    if rpmspec --parse "$combined" > "$expanded" 2>"$OUT/$r/.rpmspec-parse.err"; then
-      return 0
-    fi
+  local r="$1" spec="$OUT/$r/$r.spec" out="$OUT/$r/.expanded.spec"
+  if [[ -f "$MACROS_FILE" ]] && command -v rpmspec >/dev/null; then
+    cat "$MACROS_FILE" "$spec" > "$OUT/$r/.with-compat.spec"
+    rpmspec --parse "$OUT/$r/.with-compat.spec" > "$out" 2>"$OUT/$r/.rpmspec-parse.err" && return
   fi
-
-  # Fallback: keep crawling even if rpmspec is unavailable or a remote spec
-  # needs sources/macros not present during queue discovery.
-  cp "$raw" "$expanded"
+  cp "$spec" "$out"
 }
 
-norm_dep_name() {
-  local d="$1"
-
-  d="${d%-devel}"
-  d="${d#pkgconfig(}"
-  d="${d#cmake(}"
-  d="${d%)}"
-  d="${d#lib64}"
-  d="${d#lib}"
-
-  echo "$d"
-}
-
-repo_lookup_candidates() {
-  local d="$1" base
-
-  d="$(norm_dep_name "$d")"
-
-  [[ "$d" == task-sonicde-minimal ]] && { echo "$ROOT"; return; }
-
-  # Try the dependency as-is first.
-  echo "$d"
-
-  # Then try generic conversions from package names to repo-style names.
-  base="${d#SonicFrameworks}"
-  [[ "$base" != "$d" ]] && echo "sonic-frameworks-$base"
-
-  base="${d#SonicDE}"
-  [[ "$base" != "$d" ]] && echo "sonic-$base"
-
-  base="${d#Sonic}"
-  [[ "$base" != "$d" ]] && echo "sonic-$base"
-
-  base="${d#Silver}"
-  [[ "$base" != "$d" ]] && echo "silver-$base"
-}
-
-repo() {
-  local d="$1" c key r
-
-  while read -r c; do
-    [[ -n "$c" ]] || continue
-    key="$(norm_key "$c")"
-    r="$(repo_from_key "$key")"
-    if [[ -n "$r" ]]; then
-      echo "$r"
-      return 0
-    fi
-  done < <(repo_lookup_candidates "$d")
-
-  # Fallback to cleaned dependency so unresolved items remain visible.
-  norm_dep_name "$d"
-}
-
-clean() {
+clean_dep() {
   local x="$1" r="$2"
-
   x="${x//%\{name\}/$r}"
   x="${x//%\{?_isa\}/}"
   x="${x//%\{EVRD\}/}"
   x="${x//%\{_lib\}/lib}"
   x="${x//%_lib/lib}"
-
-  sed -E 's/#.*//;s/%\{[^}]+\}//g;s/[<>=].*//;s/^[[:space:]("'"'"']+//;s/[[:space:],)"'"'"']+$//' <<< "$x" |
-    awk '{print $1}'
-}
-
-is_wanted() {
-  [[ -n "$1" ]] && grep -Eiq "$MATCH" <<< "$1"
-}
-
-add() {
-  local d="$1" r
-  is_wanted "$d" || return 0
-  r="$(repo "$d")"
-  is_wanted "$r" || return 0
-  grep -Fxq "$r" .seen .q 2>/dev/null || echo "$r" >> .q
-}
-
-edge() {
-  local from="$1" to="$2"
-  [[ -z "$from" || -z "$to" || "$from" == "$to" ]] && return 0
-  printf '%s\t%s\n' "$from" "$to" >> .deps
+  sed -E 's/#.*//;s/%\{[^}]+\}//g;s/[<>=].*//;s/^[[:space:]("'"'"']+//;s/[[:space:],)"'"'"']+$//' <<< "$x" | awk '{print $1}'
 }
 
 deps() {
-  local r="$1" spec="$OUT/$r/.expanded.spec"
-
-  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires|Recommends|Suggests)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$spec" |
+  local r="$1" l w
+  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires|Recommends|Suggests)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$OUT/$r/.expanded.spec" |
   while read -r l; do
-    l="${l#\(}"
-    l="${l%\)}"
-    l="${l%% if *}"
-    l="${l%% or *}"
-    l="${l%% and *}"
-
+    l="${l#\(}"; l="${l%\)}"
+    l="${l%% if *}"; l="${l%% or *}"; l="${l%% and *}"
     if [[ "$l" =~ [[:space:]](>=|<=|=|>|<)[[:space:]] ]]; then
-      clean "$l" "$r"
+      clean_dep "$l" "$r"
     else
-      for w in $l; do clean "$w" "$r"; done
+      for w in $l; do clean_dep "$w" "$r"; done
     fi
   done
 }
 
-add_root_require() {
+add_repo() {
   local d="$1" r
-  is_wanted "$d" || return 0
+  wanted "$d" || return
   r="$(repo "$d")"
-  [[ "$r" == "$ROOT" ]] && return 0
-  is_wanted "$r" || return 0
-  grep -Fxq "$r" "$OUT/.task-sonicde.requires" 2>/dev/null || echo "$r" >> "$OUT/.task-sonicde.requires"
+  wanted "$r" || return
+  grep -Fxq "$r" .seen .q 2>/dev/null || echo "$r" >> .q
+}
+
+add_edge() {
+  [[ -n "$1" && -n "$2" && "$1" != "$2" ]] && printf '%s\t%s\n' "$1" "$2" >> .deps
 }
 
 write_task_spec() {
   local spec="$OUT/$ROOT/$ROOT.spec"
   sort -u "$OUT/.task-sonicde.requires" -o "$OUT/.task-sonicde.requires"
 
-  cat > "$spec" <<'EOF2'
+  cat > "$spec" <<'EOF'
 Name:           task-sonicde
 Version:        1
 Release:        1%{?dist}
@@ -243,13 +154,9 @@ Summary:        SonicDE desktop environment metapackage
 License:        MIT
 BuildArch:      noarch
 
-EOF2
-
-  while read -r p; do
-    [[ -n "$p" ]] && printf 'Requires:       %s\n' "$p" >> "$spec"
-  done < "$OUT/.task-sonicde.requires"
-
-  cat >> "$spec" <<'EOF2'
+EOF
+  while read -r p; do [[ -n "$p" ]] && printf 'Requires:       %s\n' "$p" >> "$spec"; done < "$OUT/.task-sonicde.requires"
+  cat >> "$spec" <<'EOF'
 
 %description
 Metapackage that installs the SonicDE and Silver packages selected from the
@@ -259,62 +166,37 @@ OpenMandriva task-sonicde dependency set.
 %build
 %install
 %files
-EOF2
+EOF
+}
+
+copy_compat() {
+  [[ -f "specs/$COMPAT.spec" ]] || return
+  mkdir -p "$OUT/$COMPAT"
+  cp "specs/$COMPAT.spec" "$OUT/$COMPAT/$COMPAT.spec"
 }
 
 toposort() {
   awk -F '\t' '
-    function visit(n) {
+    FNR==NR { if ($0!="") node[$0]=1; next }
+    $1 in node && $2 in node && $1 != $2 { dep[$2]=dep[$2] SUBSEP $1 }
+    function visit(n, i, a) {
       if (done[n]) return
-      if (temp[n]) {
-        print "dependency cycle involving " n > "/dev/stderr"
-        return
-      }
-      temp[n]=1
-      split(children[n], c, SUBSEP)
-      for (i in c) if (c[i] != "") visit(c[i])
-      temp[n]=0
-      done[n]=1
-      print n
+      if (temp[n]) { print "dependency cycle involving " n > "/dev/stderr"; return }
+      temp[n]=1; split(dep[n], a, SUBSEP)
+      for (i in a) if (a[i]!="") visit(a[i])
+      temp[n]=0; done[n]=1; print n
     }
-    FNR==NR {
-      if ($0 != "") node[$0]=1
-      next
-    }
-    {
-      dep=$1; pkg=$2
-      if (dep == "" || pkg == "" || dep == pkg) next
-      # Only include edges where both endpoints were actually fetched.
-      # This prevents GitHub-search matches without a root .spec from being
-      # queued and then failing as Missing subdir.
-      if (!(dep in node) || !(pkg in node)) next
-      children[pkg]=children[pkg] SUBSEP dep
-    }
-    END {
-      for (n in node) visit(n)
-    }
+    END { for (n in node) visit(n) }
   ' .seen .deps
 }
 
-write_compat_spec() {
-  local src="specs/$COMPAT_PKG.spec" dst="$OUT/$COMPAT_PKG/$COMPAT_PKG.spec"
-
-  [[ -f "$src" ]] || return 0
-
-  mkdir -p "$OUT/$COMPAT_PKG"
-  cp "$src" "$dst"
-}
-
-build_repo_lookup
+make_repo_map
 
 while [[ -s .q ]]; do
   r="$(head -n1 .q)"
   sed -i '1d' .q
-
   grep -Fxq "$r" .seen 2>/dev/null && continue
 
-  # Important: only mark repos seen after fetch succeeds. Otherwise the
-  # topological order may include repos that never made it into $OUT.
   fetch "$r" || continue
   echo "$r" >> .seen
   parse_spec "$r"
@@ -322,33 +204,33 @@ while [[ -s .q ]]; do
   while read -r d; do
     [[ -n "$d" ]] || continue
 
-    if [[ "$r" == "$ROOT" ]]; then
-      is_wanted "$d" || continue
-      add_root_require "$d"
+    if [[ "$r" == "$ROOT" ]] && wanted "$d"; then
+      rr="$(repo "$d")"
+      if [[ "$rr" != "$ROOT" ]] && wanted "$rr" && ! grep -Fxq "$rr" "$OUT/.task-sonicde.requires" 2>/dev/null; then
+        echo "$rr" >> "$OUT/.task-sonicde.requires"
+      fi
     fi
 
-    is_wanted "$d" || continue
-    dep_repo="$(repo "$d")"
-    is_wanted "$dep_repo" || continue
-
-    add "$d"
-    edge "$dep_repo" "$r"
+    wanted "$d" || continue
+    rr="$(repo "$d")"
+    wanted "$rr" || continue
+    add_repo "$d"
+    add_edge "$rr" "$r"
   done < <(deps "$r")
 done
 
 write_task_spec
-write_compat_spec
+copy_compat
 toposort > "$OUT/.order"
-rm -f .q .seen .deps
+rm -f .q .seen .deps .repos.tsv
 
 (cd "$OUT"; git init -q; git add .; git -c user.name=builder -c user.email=builder@example.invalid commit --allow-empty -qm specs)
 
 url="file://$PWD/$OUT"
 commit="$(git -C "$OUT" rev-parse HEAD)"
 
-if [[ -f "$OUT/$COMPAT_PKG/$COMPAT_PKG.spec" ]]; then
-  rpm-build-queue add --package "$COMPAT_PKG" --clone-url "$url" --commit "$commit" --subdir "$COMPAT_PKG" --spec "$COMPAT_PKG.spec"
-fi
+[[ -f "$OUT/$COMPAT/$COMPAT.spec" ]] &&
+  rpm-build-queue add --package "$COMPAT" --clone-url "$url" --commit "$commit" --subdir "$COMPAT" --spec "$COMPAT.spec"
 
 while read -r p; do
   rpm-build-queue add --package "$p" --clone-url "$url" --commit "$commit" --subdir "$p" --spec "$p.spec"
