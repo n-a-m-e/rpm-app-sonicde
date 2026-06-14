@@ -294,10 +294,10 @@ walk(){
       wanted "$dep" || continue
 
       prov="$(provider "$dep")"
-      [[ -n "$prov" ]] || die "no provider for BuildRequires '$dep' while processing repo '$repo'"
+      [[ -n "$prov" ]] || die "no provider for dependency '$dep' while ordering repo '$repo'"
 
       [[ "$prov" != "$repo" ]] && printf '%s\t%s\n' "$prov" "$repo" >> .deps
-    done < <(build_deps "$repo")
+    done < <(deps "$repo")
   done
 
   rm -f "$q"
@@ -333,39 +333,101 @@ EOF
 }
 
 toposort(){
+  # Build order uses both BuildRequires and runtime Requires edges because
+  # Fedora dnf must be able to install BuildRequires providers and their
+  # runtime dependency chains from the local repo. Runtime dependencies can
+  # contain cycles, so collapse strongly connected components instead of
+  # aborting on a cycle.
   python3 - .processed .deps > "$OUT/.order" <<'PY'
 import sys
 from collections import defaultdict
+
 nodes = [x.strip() for x in open(sys.argv[1]) if x.strip()]
-node_set, deps = set(nodes), defaultdict(set)
+node_set = set(nodes)
+graph = defaultdict(set)
 
 for line in open(sys.argv[2]):
     if not line.strip():
         continue
     dep, pkg = line.rstrip("\n").split("\t", 1)
     if dep in node_set and pkg in node_set and dep != pkg:
-        deps[pkg].add(dep)
+        graph[pkg].add(dep)
 
-done, visiting, out = set(), set(), []
+# Tarjan SCCs on dependency graph.
+index = 0
+stack = []
+on_stack = set()
+idx = {}
+low = {}
+components = []
 
-def visit(n):
-    if n in done:
-        return
-    if n in visiting:
-        raise SystemExit(f"dependency cycle involving {n}")
-    visiting.add(n)
-    for d in sorted(deps[n]):
-        visit(d)
-    visiting.remove(n)
-    done.add(n)
-    out.append(n)
+def strongconnect(v):
+    global index
+    idx[v] = index
+    low[v] = index
+    index += 1
+    stack.append(v)
+    on_stack.add(v)
+
+    for w in graph[v]:
+        if w not in idx:
+            strongconnect(w)
+            low[v] = min(low[v], low[w])
+        elif w in on_stack:
+            low[v] = min(low[v], idx[w])
+
+    if low[v] == idx[v]:
+        comp = []
+        while True:
+            w = stack.pop()
+            on_stack.remove(w)
+            comp.append(w)
+            if w == v:
+                break
+        components.append(comp)
 
 for n in nodes:
-    visit(n)
+    if n not in idx:
+        strongconnect(n)
 
-print("\n".join(out))
+comp_id = {}
+for i, comp in enumerate(components):
+    for n in comp:
+        comp_id[n] = i
+
+comp_deps = defaultdict(set)
+for pkg, deps in graph.items():
+    for dep in deps:
+        a, b = comp_id[pkg], comp_id[dep]
+        if a != b:
+            comp_deps[a].add(b)
+
+done = set()
+out_comps = []
+
+def visit(c):
+    if c in done:
+        return
+    for d in sorted(comp_deps[c]):
+        visit(d)
+    done.add(c)
+    out_comps.append(c)
+
+for n in nodes:
+    visit(comp_id[n])
+
+seen = set()
+for c in out_comps:
+    comp = [n for n in nodes if comp_id[n] == c]
+    if len(comp) > 1:
+        print("runtime dependency cycle group: " + ", ".join(comp), file=sys.stderr)
+    for n in comp:
+        if n not in seen:
+            seen.add(n)
+            print(n)
 PY
 }
+
 
 commit_and_queue(){
   mkdir -p "$OUT/$COMPAT"
@@ -400,5 +462,6 @@ download_index_all
 verify_all_patches_applied
 walk
 write_task
+sort -u .deps -o .deps
 toposort
 commit_and_queue
