@@ -5,6 +5,7 @@ OUT=sonicde-specs
 ORG=OpenMandrivaAssociation
 MATCH='sonic|silver'
 ROOT=task-sonicde
+MACROS_FILE="${MACROS_FILE:-macros/openmandriva-compat.macros}"
 
 rm -rf "$OUT" .q .seen .deps
 mkdir -p "$OUT"
@@ -26,28 +27,63 @@ camel() {
   sed -E 's/([a-z0-9])([A-Z])/\1-\2/g;s/([A-Z]+)([A-Z][a-z])/\1-\2/g' <<< "$1" | tr A-Z a-z
 }
 
+parse_spec() {
+  local r="$1" raw="$OUT/$r/$r.spec" combined="$OUT/$r/.with-compat.spec" expanded="$OUT/$r/.expanded.spec"
+
+  if [[ -f "$MACROS_FILE" ]] && command -v rpmspec >/dev/null 2>&1; then
+    cat "$MACROS_FILE" "$raw" > "$combined"
+    if rpmspec --parse "$combined" > "$expanded" 2>"$OUT/$r/.rpmspec-parse.err"; then
+      return 0
+    fi
+  fi
+
+  # Fallback: keep crawling even if rpmspec is unavailable or a remote spec
+  # needs sources/macros not present during queue discovery.
+  cp "$raw" "$expanded"
+}
+
 repo() {
-  d="${1%-devel}"
+  local d="$1" base
+
+  d="${d%-devel}"
+  d="${d#pkgconfig(}"; d="${d#cmake(}"; d="${d%)}"
+
   [[ "$d" == task-sonicde-minimal ]] && { echo "$ROOT"; return; }
   [[ "$d" == sonic-* || "$d" == silver-* ]] && { echo "$d"; return; }
 
-  if [[ "$d" =~ ^libSonicFrameworks(.+) ]]; then
+  # Repo discovery still needs to map package names to OpenMandriva repo names.
+  # Keep this generic: strip lib/lib64 package prefixes, then convert Sonic*/Silver*
+  # CamelCase names to lower kebab repo names.
+  base="$d"
+  base="${base#lib64}"
+  base="${base#lib}"
+
+  if [[ "$base" =~ ^SonicFrameworks(.+) ]]; then
     echo "sonic-frameworks-$(camel "${BASH_REMATCH[1]}")"
-  elif [[ "$d" =~ ^libSonicDE(.+) ]]; then
+  elif [[ "$base" =~ ^SonicDE(.+) ]]; then
     echo "sonic-$(camel "${BASH_REMATCH[1]}")"
-  elif [[ "$d" == libSonicDE ]]; then
+  elif [[ "$base" == SonicDE ]]; then
     echo sonic-interface-libraries
+  elif [[ "$base" =~ ^Sonic(.+) ]]; then
+    echo "sonic-$(camel "${BASH_REMATCH[1]}")"
+  elif [[ "$base" =~ ^Silver(.+) ]]; then
+    echo "silver-$(camel "${BASH_REMATCH[1]}")"
   else
     echo "$d"
   fi
 }
 
 clean() {
-  x="${1//%\{name\}/$2}"
+  local x="$1" r="$2"
+
+  x="${x//%\{name\}/$r}"
   x="${x//%\{?_isa\}/}"
   x="${x//%\{EVRD\}/}"
   x="${x//%\{_lib\}/lib}"
-  sed -E 's/#.*//;s/%\{[^}]+\}//g;s/[<>=].*//;s/^[[:space:]("'\'']+//;s/[[:space:],)"'\'']+$//' <<< "$x" | awk '{print $1}'
+  x="${x//%_lib/lib}"
+
+  sed -E 's/#.*//;s/%\{[^}]+\}//g;s/[<>=].*//;s/^[[:space:]("'\'']+//;s/[[:space:],)"'\'']+$//' <<< "$x" |
+    awk '{print $1}'
 }
 
 is_wanted() {
@@ -69,11 +105,10 @@ edge() {
 }
 
 deps() {
-  r="$1"
-  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires|Recommends|Suggests)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$OUT/$r/$r.spec" |
-  while read -r l; do
-    [[ "$l" =~ ^%mklibname[[:space:]]+-d[[:space:]]+([^[:space:]]+) ]] && { echo "${BASH_REMATCH[1]}"; continue; }
+  local r="$1" spec="$OUT/$r/.expanded.spec"
 
+  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires|Recommends|Suggests)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$spec" |
+  while read -r l; do
     l="${l#\(}"; l="${l%\)}"
     l="${l%% if *}"; l="${l%% or *}"; l="${l%% and *}"
 
@@ -164,6 +199,7 @@ while [[ -s .q ]]; do
   echo "$r" >> .seen
 
   fetch "$r" || continue
+  parse_spec "$r"
 
   while read -r d; do
     [[ -n "$d" ]] || continue
