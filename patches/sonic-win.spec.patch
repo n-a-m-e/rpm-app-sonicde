@@ -1,9 +1,6 @@
 diff --git a/sonic-win/sonic-win.spec b/sonic-win/sonic-win.spec
 --- a/sonic-win/sonic-win.spec
 +++ b/sonic-win/sonic-win.spec
-@@ -25 +25 @@
--BuildRequires: %{_lib}EGL_mesa-devel
-+BuildRequires: mesa-libEGL-devel
 @@ -143 +143 @@
 -Suggests:	kwin-aurorae
 +Suggests:	kwin
