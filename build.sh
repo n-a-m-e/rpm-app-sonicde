@@ -203,6 +203,20 @@ deps(){
   done
 }
 
+build_deps(){
+  local repo="$1" line word
+  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*BuildRequires[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$OUT/$repo/.expanded.spec" |
+  while read -r line; do
+    line="${line#\(}"; line="${line%\)}"
+    line="${line%% if *}"; line="${line%% or *}"; line="${line%% and *}"
+    if [[ "$line" =~ [[:space:]](>=|<=|=|>|<)[[:space:]] ]]; then
+      clean "$line" "$repo"
+    else
+      for word in $line; do clean "$word" "$repo"; done
+    fi
+  done
+}
+
 provider(){
   awk -F '\t' -v p="$1" '$1==p{print $2; exit}' .providers.tsv
 }
@@ -248,13 +262,21 @@ walk(){
         grep -Fxq "$prov" "$OUT/.task-sonicde.requires" 2>/dev/null || echo "$prov" >> "$OUT/.task-sonicde.requires"
       fi
 
-      [[ "$prov" != "$repo" ]] && printf '%s\t%s\n' "$prov" "$repo" >> .deps
-
       if wanted "$prov" && ! grep -Fxq "$prov" .processed "$q" 2>/dev/null; then
         log "$repo needs $dep -> $prov"
         echo "$prov" >> "$q"
       fi
     done < <(deps "$repo")
+
+    while read -r dep; do
+      [[ -n "$dep" ]] || continue
+      wanted "$dep" || continue
+
+      prov="$(provider "$dep")"
+      [[ -n "$prov" ]] || die "no provider for BuildRequires '$dep' while processing repo '$repo'"
+
+      [[ "$prov" != "$repo" ]] && printf '%s\t%s\n' "$prov" "$repo" >> .deps
+    done < <(build_deps "$repo")
   done
 
   rm -f "$q"
@@ -332,7 +354,7 @@ commit_and_queue(){
   cp .deps "$OUT/.deps"
   cp .applied-patches "$OUT/.applied-patches"
 
-  log "Final order: $(wc -l < "$OUT/.order") packages"
+  log "Final build order: $(wc -l < "$OUT/.order") packages"
   sed 's/^/  /' "$OUT/.order" | tee -a "$LOG" >&2
 
   rm -f .repos.tsv .providers.tsv .processed .deps .applied-patches
