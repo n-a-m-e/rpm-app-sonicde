@@ -49,25 +49,42 @@ github_repos(){
 
   python3 - "$tmp" > .repos.tsv <<'PY'
 import json, re, sys
+
+def keep_repo(name):
+    n = name.lower()
+    return n == "task-sonicde" or n.startswith("sonic") or n.startswith("silver")
+
 s = open(sys.argv[1], encoding="utf-8", errors="replace").read()
 dec, pos, seen = json.JSONDecoder(), 0, set()
+
 while True:
-    while pos < len(s) and s[pos].isspace(): pos += 1
-    if pos >= len(s): break
+    while pos < len(s) and s[pos].isspace():
+        pos += 1
+    if pos >= len(s):
+        break
+
     obj, pos = dec.raw_decode(s, pos)
+
     for it in obj.get("items", []):
         name, url = it.get("name") or "", it.get("html_url") or ""
+        if not name or not url or not keep_repo(name):
+            continue
+
         k = re.sub(r"[^a-z0-9]", "", name.lower())
-        if name and url and k not in seen:
-            seen.add(k)
-            print(f"{k}\t{name}\t{url}")
+        if k in seen:
+            continue
+
+        seen.add(k)
+        print(f"{k}\t{name}\t{url}")
 PY
 
   rm -f "$tmp"
-  [[ -s .repos.tsv ]] || die "GitHub lookup returned no repos"
+  [[ -s .repos.tsv ]] || die "GitHub lookup returned no relevant Sonic/Silver repos"
+
   awk -F '\t' '{print $2}' .repos.tsv | sort -u > "$OUT/.all-repos"
   cp .repos.tsv "$OUT/.repo-map.tsv"
-  log "Repos found: $(wc -l < "$OUT/.all-repos")"
+
+  log "Relevant repos found: $(wc -l < "$OUT/.all-repos")"
 }
 
 repo_url(){
@@ -90,7 +107,12 @@ fetch_parse(){
     if curl -fsSL "$(raw_url "$repo" "$branch")" -o "$OUT/$repo/$repo.spec" 2>"$OUT/$repo/.curl-$branch.err"; then
       log "Fetched $repo ($branch)"
       cat "$MACROS_FILE" "$OUT/$repo/$repo.spec" > "$OUT/$repo/.with-compat.spec"
-      rpmspec --parse "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.expanded.spec" 2>"$OUT/$repo/.parse.err" || die "rpmspec --parse failed: $repo"
+
+      if ! rpmspec --parse "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.expanded.spec" 2>"$OUT/$repo/.parse.err"; then
+        sed "s/^/[parse $repo] /" "$OUT/$repo/.parse.err" | tee -a "$LOG" >&2 || true
+        die "rpmspec --parse failed: $repo"
+      fi
+
       return
     fi
   done
@@ -118,7 +140,11 @@ add_provider(){
 
 index_repo(){
   local repo="$1"
-  rpmspec -q --qf '%{NAME}\n' "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.names" 2>"$OUT/$repo/.query.err" || die "rpmspec -q failed: $repo"
+
+  if ! rpmspec -q --qf '%{NAME}\n' "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.names" 2>"$OUT/$repo/.query.err"; then
+    sed "s/^/[query $repo] /" "$OUT/$repo/.query.err" | tee -a "$LOG" >&2 || true
+    die "rpmspec -q failed: $repo"
+  fi
 
   while read -r p; do add_provider "$p" "$repo"; done < "$OUT/$repo/.names"
 
@@ -147,7 +173,8 @@ provider(){
 
 download_index_all(){
   local repo
-  log "Downloading and indexing all specs"
+  log "Downloading and indexing all relevant specs"
+
   while read -r repo; do
     fetch_parse "$repo"
     index_repo "$repo"
@@ -231,23 +258,31 @@ import sys
 from collections import defaultdict
 nodes = [x.strip() for x in open(sys.argv[1]) if x.strip()]
 node_set, deps = set(nodes), defaultdict(set)
+
 for line in open(sys.argv[2]):
-    if not line.strip(): continue
+    if not line.strip():
+        continue
     dep, pkg = line.rstrip("\n").split("\t", 1)
     if dep in node_set and pkg in node_set and dep != pkg:
         deps[pkg].add(dep)
 
 done, visiting, out = set(), set(), []
+
 def visit(n):
-    if n in done: return
-    if n in visiting: raise SystemExit(f"dependency cycle involving {n}")
+    if n in done:
+        return
+    if n in visiting:
+        raise SystemExit(f"dependency cycle involving {n}")
     visiting.add(n)
-    for d in sorted(deps[n]): visit(d)
+    for d in sorted(deps[n]):
+        visit(d)
     visiting.remove(n)
     done.add(n)
     out.append(n)
 
-for n in nodes: visit(n)
+for n in nodes:
+    visit(n)
+
 print("\n".join(out))
 PY
 }
