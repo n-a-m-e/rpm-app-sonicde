@@ -1,8 +1,10 @@
+%global _debugsource_packages 0
 %define EVRD %{?epoch:%{epoch}:}%{?version:%{version}}%{?release:-%{release}}
 %define _iconsdir %{_datadir}/icons
 %define _qtdir %{_libdir}/qt6
 %define armx %{arm} aarch64
 %define mklibname(ds) %(echo "lib%{1}%{!-d:%(if echo %{1} | rev | cut -b1 | grep -q '[0-9]'; then echo -n _; fi)}%{?2:%{2}}%{?3:_%{3}}%{-s:-static}%{-d:-devel}" | sed -e 's,__,_,g' -e 's,_$,,g')
+
 %global __om_old_spec_install_post %{expand:%{__spec_install_post}}
 %define __spec_install_post %{__om_old_spec_install_post} \
 if [ ! -f "%{name}.lang" ]; then \
@@ -10,8 +12,5 @@ if [ ! -f "%{name}.lang" ]; then \
   if [ -d "%{buildroot}%{_datadir}/locale" ]; then \
     find "%{buildroot}%{_datadir}/locale" -type f \\( -name "*.mo" -o -name "*.qm" \\) | sed "s#^%{buildroot}##" | LC_ALL=C sort > "%{name}.lang"; \
   fi; \
-fi; \
-if [ ! -f debugsourcefiles.list ]; then \
-  : > debugsourcefiles.list; \
 fi \
 %{nil}
