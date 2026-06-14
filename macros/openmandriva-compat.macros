@@ -1,37 +1,4 @@
-# OpenMandriva compatibility macros for Fedora RPM builds.
-#
-# Keep this file small: it only defines the OpenMandriva macros that the
-# SonicDE specs currently use. Do not copy the full OpenMandriva macro set into
-# Fedora unless you intentionally want to emulate the whole distro build policy.
-
-# Dynamic epoch/version/release helper used in versioned Requires/Provides.
-# OpenMandriva source:
-#   %EVRD %{?epoch:%{epoch}:}%{?version:%{version}}%{?release:-%{release}}
-%EVRD %{?epoch:%{epoch}:}%{?version:%{version}}%{?release:-%{release}}
-
-# Icon directory helper.
-# OpenMandriva source:
-#   %_iconsdir %{_datadir}/icons
-%_iconsdir %{_datadir}/icons
-
-# OpenMandriva ARM architecture group.
-# Fedora already defines %arm on normal Fedora RPM setups, so keep the same
-# shape as OpenMandriva and add aarch64.
-# OpenMandriva source:
-#   %armx %arm aarch64
-%armx %{arm} aarch64
-
-# OpenMandriva library package-name helper.
-#
-# OpenMandriva source:
-#   %mklibname(ds) %(echo "%{_lib}%{1}%{!-d:%(if echo %{1} | rev | cut -b1 | grep -q '[0-9]'; then echo -n _; fi)}%{?2:%{2}}%{?3:_%{3}}%{-s:-static}%{-d:-devel}" | sed -e 's,__,_,g' -e 's,_$,,g')
-#
-# Examples:
-#   %{mklibname test}        -> lib64test on x86_64
-#   %{mklibname test 1 -d}   -> libtest1-devel
-#   %{mklibname test 1 -d 0 -s} -> libtest1_0-static-devel
-#
-# This intentionally follows OpenMandriva naming, because the same macro may be
-# used in %package, Requires, Obsoletes, %description, and %files. Consistency is
-# more important than Fedora-style naming here.
-%mklibname(ds) %(echo "%{_lib}%{1}%{!-d:%(if echo %{1} | rev | cut -b1 | grep -q '[0-9]'; then echo -n _; fi)}%{?2:%{2}}%{?3:_%{3}}%{-s:-static}%{-d:-devel}" | sed -e 's,__,_,g' -e 's,_$,,g')
+%global EVRD %{?epoch:%{epoch}:}%{?version:%{version}}%{?release:-%{release}}
+%global _iconsdir %{_datadir}/icons
+%global armx %{arm} aarch64
+%define mklibname(ds) %(echo "%{_lib}%{1}%{!-d:%(if echo %{1} | rev | cut -b1 | grep -q '[0-9]'; then echo -n _; fi)}%{?2:%{2}}%{?3:_%{3}}%{-s:-static}%{-d:-devel}" | sed -e 's,__,_,g' -e 's,_$,,g')
