@@ -4,12 +4,14 @@ set -euo pipefail
 OUT=sonicde-specs
 ORG=OpenMandrivaAssociation
 MATCH='sonic|silver'
+ROOT=task-sonicde
 
 rm -rf "$OUT" .q .seen
 mkdir -p "$OUT"
-echo task-sonicde > .q
+echo "$ROOT" > .q
 : > .seen
 : > "$OUT/.order"
+: > "$OUT/.task-sonicde.requires"
 
 fetch() {
   mkdir -p "$OUT/$1"
@@ -29,8 +31,8 @@ camel() {
 
 repo() {
   d="${1%-devel}"
-  [[ "$d" == task-sonicde-minimal ]] && { echo task-sonicde; return; }
-  [[ "$d" == sonic-* ]] && { echo "$d"; return; }
+  [[ "$d" == task-sonicde-minimal ]] && { echo "$ROOT"; return; }
+  [[ "$d" == sonic-* || "$d" == silver-* ]] && { echo "$d"; return; }
 
   if [[ "$d" =~ ^libSonicFrameworks(.+) ]]; then
     echo "sonic-frameworks-$(camel "${BASH_REMATCH[1]}")"
@@ -49,6 +51,16 @@ clean() {
   x="${x//%\{EVRD\}/}"
   x="${x//%\{_lib\}/lib}"
   sed -E 's/#.*//;s/%\{[^}]+\}//g;s/[<>=].*//;s/^[[:space:]("'\'']+//;s/[[:space:],)"'\'']+$//' <<< "$x" | awk '{print $1}'
+}
+
+add_root_require() {
+  local d="$1" r
+  [[ -n "$d" ]] || return 0
+  grep -Eiq "$MATCH" <<< "$d" || return 0
+  r="$(repo "$d")"
+  [[ "$r" == "$ROOT" ]] && return 0
+  grep -Eiq "$MATCH" <<< "$r" || return 0
+  grep -Fxq "$r" "$OUT/.task-sonicde.requires" 2>/dev/null || echo "$r" >> "$OUT/.task-sonicde.requires"
 }
 
 add() {
@@ -77,6 +89,41 @@ deps() {
   done
 }
 
+write_task_spec() {
+  local spec="$OUT/$ROOT/$ROOT.spec"
+
+  sort -u "$OUT/.task-sonicde.requires" -o "$OUT/.task-sonicde.requires"
+
+  cat > "$spec" <<'EOF'
+Name:           task-sonicde
+Version:        1
+Release:        1%{?dist}
+Summary:        SonicDE desktop environment metapackage
+License:        MIT
+BuildArch:      noarch
+
+EOF
+
+  while read -r pkg; do
+    [[ -n "$pkg" ]] && printf 'Requires:       %s\n' "$pkg" >> "$spec"
+  done < "$OUT/.task-sonicde.requires"
+
+  cat >> "$spec" <<'EOF'
+
+%description
+Metapackage that installs the SonicDE and Silver packages selected from the
+OpenMandriva task-sonicde dependency set.
+
+%prep
+
+%build
+
+%install
+
+%files
+EOF
+}
+
 while [[ -s .q ]]; do
   r="$(head -n1 .q)"
   sed -i '1d' .q
@@ -85,12 +132,17 @@ while [[ -s .q ]]; do
   echo "$r" >> .seen
 
   fetch "$r" || continue
+
   deps "$r" | while read -r d; do
-    [[ "$r" == task-sonicde ]] && ! grep -Eiq "$MATCH" <<< "$d" && continue
+    if [[ "$r" == "$ROOT" ]]; then
+      grep -Eiq "$MATCH" <<< "$d" || continue
+      add_root_require "$d"
+    fi
     add "$d"
   done
 done
 
+write_task_spec
 rm -f .q .seen
 
 (cd "$OUT"; git init -q; git add .; git -c user.name=builder -c user.email=builder@example.invalid commit --allow-empty -qm specs)
