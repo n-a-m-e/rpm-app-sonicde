@@ -1,4 +1,5 @@
 %define EVRD %{?epoch:%{epoch}:}%{?version:%{version}}%{?release:-%{release}}
 %define _iconsdir %{_datadir}/icons
+%define _qtdir %{_libdir}/qt6
 %define armx %{arm} aarch64
 %define mklibname(ds) %(echo "lib%{1}%{!-d:%(if echo %{1} | rev | cut -b1 | grep -q '[0-9]'; then echo -n _; fi)}%{?2:%{2}}%{?3:_%{3}}%{-s:-static}%{-d:-devel}" | sed -e 's,__,_,g' -e 's,_$,,g')
