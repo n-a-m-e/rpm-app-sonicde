@@ -1,0 +1,7 @@
+diff --git a/sonic-screen-library/sonic-screen-library.spec b/sonic-screen-library/sonic-screen-library.spec
+--- a/sonic-screen-library/sonic-screen-library.spec
++++ b/sonic-screen-library/sonic-screen-library.spec
+@@ -111,0 +112 @@
++%if 0%{?with_devel_docs}
+@@ -122,0 +124 @@
++%endif
