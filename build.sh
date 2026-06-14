@@ -8,24 +8,99 @@ ROOT=task-sonicde
 COMPAT_PKG=openmandriva-buildrequires-compat
 MACROS_FILE="${MACROS_FILE:-macros/openmandriva-compat.macros}"
 
-rm -rf "$OUT" .q .seen .deps
+SONIC_SEARCH_URL='https://api.github.com/search/repositories?q=sonic%20in:name,description+org:OpenMandrivaAssociation&per_page=100'
+SILVER_SEARCH_URL='https://api.github.com/search/repositories?q=silver%20in:name,description+org:OpenMandrivaAssociation&per_page=100'
+
+rm -rf "$OUT" .q .seen .deps .repo-map.tsv
 mkdir -p "$OUT"
 echo "$ROOT" > .q
 : > .seen
 : > .deps
 : > "$OUT/.task-sonicde.requires"
 
+norm_key() {
+  tr '[:upper:]' '[:lower:]' <<< "$1" | sed -E 's/[^a-z0-9]//g'
+}
+
+build_repo_lookup() {
+  local tmp
+  tmp="$(mktemp)"
+
+  {
+    curl -fsSL "$SONIC_SEARCH_URL"
+    echo
+    curl -fsSL "$SILVER_SEARCH_URL"
+  } > "$tmp"
+
+  python3 - "$tmp" > .repo-map.tsv <<'PY'
+import json
+import re
+import sys
+
+path = sys.argv[1]
+text = open(path, "r", encoding="utf-8", errors="replace").read()
+
+decoder = json.JSONDecoder()
+pos = 0
+seen = set()
+
+while True:
+    while pos < len(text) and text[pos].isspace():
+        pos += 1
+    if pos >= len(text):
+        break
+
+    obj, end = decoder.raw_decode(text, pos)
+    pos = end
+
+    for item in obj.get("items", []):
+        name = item.get("name") or ""
+        url = item.get("html_url") or item.get("clone_url") or item.get("url") or ""
+        if not name or not url:
+            continue
+
+        key = re.sub(r"[^a-z0-9]", "", name.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+
+        print(f"{key}\t{name}\t{url}")
+PY
+
+  rm -f "$tmp"
+}
+
+repo_from_key() {
+  local key="$1"
+  awk -F '\t' -v k="$key" '$1 == k { print $2; exit }' .repo-map.tsv
+}
+
+repo_url_from_name() {
+  local name="$1" key
+  key="$(norm_key "$name")"
+  awk -F '\t' -v k="$key" '$1 == k { print $3; exit }' .repo-map.tsv
+}
+
+repo_raw_url() {
+  local r="$1" b="$2" url repo_name
+  url="$(repo_url_from_name "$r")"
+
+  if [[ "$url" =~ ^https://github.com/([^/]+)/([^/]+)$ ]]; then
+    repo_name="${BASH_REMATCH[2]}"
+    printf 'https://raw.githubusercontent.com/%s/%s/%s/%s.spec\n' "${BASH_REMATCH[1]}" "$repo_name" "$b" "$repo_name"
+  else
+    printf 'https://raw.githubusercontent.com/%s/%s/%s/%s.spec\n' "$ORG" "$r" "$b" "$r"
+  fi
+}
+
 fetch() {
+  local r="$1" b
   mkdir -p "$OUT/$1"
   for b in master main rolling; do
-    curl -fsSL "https://raw.githubusercontent.com/$ORG/$1/$b/$1.spec" -o "$OUT/$1/$1.spec" 2>/dev/null && return 0
+    curl -fsSL "$(repo_raw_url "$r" "$b")" -o "$OUT/$1/$1.spec" 2>/dev/null && return 0
   done
   rm -rf "$OUT/$1"
   return 1
-}
-
-camel() {
-  sed -E 's/([a-z0-9])([A-Z])/\1-\2/g;s/([A-Z]+)([A-Z][a-z])/\1-\2/g' <<< "$1" | tr A-Z a-z
 }
 
 parse_spec() {
@@ -43,35 +118,58 @@ parse_spec() {
   cp "$raw" "$expanded"
 }
 
-repo() {
-  local d="$1" base
+norm_dep_name() {
+  local d="$1"
 
   d="${d%-devel}"
-  d="${d#pkgconfig(}"; d="${d#cmake(}"; d="${d%)}"
+  d="${d#pkgconfig(}"
+  d="${d#cmake(}"
+  d="${d%)}"
+  d="${d#lib64}"
+  d="${d#lib}"
+
+  echo "$d"
+}
+
+repo_lookup_candidates() {
+  local d="$1" base
+
+  d="$(norm_dep_name "$d")"
 
   [[ "$d" == task-sonicde-minimal ]] && { echo "$ROOT"; return; }
-  [[ "$d" == sonic-* || "$d" == silver-* ]] && { echo "$d"; return; }
 
-  # Repo discovery still needs to map package names to OpenMandriva repo names.
-  # Keep this generic: strip lib/lib64 package prefixes, then convert Sonic*/Silver*
-  # CamelCase names to lower kebab repo names.
-  base="$d"
-  base="${base#lib64}"
-  base="${base#lib}"
+  # Try the dependency as-is first.
+  echo "$d"
 
-  if [[ "$base" =~ ^SonicFrameworks(.+) ]]; then
-    echo "sonic-frameworks-$(camel "${BASH_REMATCH[1]}")"
-  elif [[ "$base" =~ ^SonicDE(.+) ]]; then
-    echo "sonic-$(camel "${BASH_REMATCH[1]}")"
-  elif [[ "$base" == SonicDE ]]; then
-    echo sonic-interface-libraries
-  elif [[ "$base" =~ ^Sonic(.+) ]]; then
-    echo "sonic-$(camel "${BASH_REMATCH[1]}")"
-  elif [[ "$base" =~ ^Silver(.+) ]]; then
-    echo "silver-$(camel "${BASH_REMATCH[1]}")"
-  else
-    echo "$d"
-  fi
+  # Then try generic conversions from package names to repo-style names.
+  base="${d#SonicFrameworks}"
+  [[ "$base" != "$d" ]] && echo "sonic-frameworks-$base"
+
+  base="${d#SonicDE}"
+  [[ "$base" != "$d" ]] && echo "sonic-$base"
+
+  base="${d#Sonic}"
+  [[ "$base" != "$d" ]] && echo "sonic-$base"
+
+  base="${d#Silver}"
+  [[ "$base" != "$d" ]] && echo "silver-$base"
+}
+
+repo() {
+  local d="$1" c key r
+
+  while read -r c; do
+    [[ -n "$c" ]] || continue
+    key="$(norm_key "$c")"
+    r="$(repo_from_key "$key")"
+    if [[ -n "$r" ]]; then
+      echo "$r"
+      return 0
+    fi
+  done < <(repo_lookup_candidates "$d")
+
+  # Fallback to cleaned dependency so unresolved items remain visible.
+  norm_dep_name "$d"
 }
 
 clean() {
@@ -110,8 +208,11 @@ deps() {
 
   awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires|Recommends|Suggests)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$spec" |
   while read -r l; do
-    l="${l#\(}"; l="${l%\)}"
-    l="${l%% if *}"; l="${l%% or *}"; l="${l%% and *}"
+    l="${l#\(}"
+    l="${l%\)}"
+    l="${l%% if *}"
+    l="${l%% or *}"
+    l="${l%% and *}"
 
     if [[ "$l" =~ [[:space:]](>=|<=|=|>|<)[[:space:]] ]]; then
       clean "$l" "$r"
@@ -200,6 +301,8 @@ write_compat_spec() {
   mkdir -p "$OUT/$COMPAT_PKG"
   cp "$src" "$dst"
 }
+
+build_repo_lookup
 
 while [[ -s .q ]]; do
   r="$(head -n1 .q)"
