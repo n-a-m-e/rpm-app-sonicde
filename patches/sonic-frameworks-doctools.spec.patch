@@ -1,7 +1,0 @@
-diff --git a/sonic-frameworks-doctools/sonic-frameworks-doctools.spec b/sonic-frameworks-doctools/sonic-frameworks-doctools.spec
---- a/sonic-frameworks-doctools/sonic-frameworks-doctools.spec
-+++ b/sonic-frameworks-doctools/sonic-frameworks-doctools.spec
-@@ -41 +41 @@
--BuildRequires: libxml2-utils
-+BuildRequires: libxml2
-
