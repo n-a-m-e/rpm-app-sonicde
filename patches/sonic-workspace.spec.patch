@@ -1,6 +1,0 @@
-diff --git a/sonic-workspace/sonic-workspace.spec b/sonic-workspace/sonic-workspace.spec
---- a/sonic-workspace/sonic-workspace.spec
-+++ b/sonic-workspace/sonic-workspace.spec
-@@ -212 +212 @@
--Requires: %mklibname openexrcore
-+Requires: OpenEXR-libs
