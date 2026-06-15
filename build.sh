@@ -14,11 +14,13 @@ SEARCHES=(
   'https://api.github.com/search/repositories?q=silver%20in:name,description+org:OpenMandrivaAssociation&per_page=100'
 )
 
-rm -rf "$OUT" .repos.tsv .providers.tsv .processed .deps .applied-patches "$LOG"
+rm -rf "$OUT" .repos.tsv .providers.tsv .processed .deps .builddeps .runtimedeps .applied-patches "$LOG"
 mkdir -p "$OUT"
 : > .providers.tsv
 : > .processed
 : > .deps
+: > .builddeps
+: > .runtimedeps
 : > .applied-patches
 : > "$OUT/.task-sonicde.requires"
 : > "$LOG"
@@ -97,12 +99,12 @@ repo_url(){
   awk -F '\t' -v k="$(key "$1")" '$1==k{print $3; exit}' .repos.tsv
 }
 
-raw_url(){
+archive_url(){
   local repo="$1" branch="$2" u name
   u="$(repo_url "$repo")"
   [[ "$u" =~ ^https://github.com/([^/]+)/([^/]+)$ ]] || die "bad/missing GitHub URL for $repo"
   name="${BASH_REMATCH[2]}"
-  printf 'https://raw.githubusercontent.com/%s/%s/%s/%s.spec\n' "${BASH_REMATCH[1]}" "$name" "$branch" "$name"
+  printf 'https://codeload.github.com/%s/%s/tar.gz/%s\n' "${BASH_REMATCH[1]}" "$name" "$branch"
 }
 
 prepare_index_spec(){
@@ -124,7 +126,6 @@ prepare_index_spec(){
   cat "$MACROS_FILE" "$index_repo/$repo.spec" > "$OUT/$repo/.with-compat.spec"
 }
 
-
 verify_all_patches_applied(){
   local p missing=0
 
@@ -140,15 +141,6 @@ verify_all_patches_applied(){
   shopt -u nullglob
 
   [[ "$missing" -eq 0 ]] || die "one or more patch files were not applied"
-}
-
-archive_url(){
-  local repo="$1" branch="$2" u name
-  u="$(repo_url "$repo")"
-  [[ "$u" =~ ^https://github.com/([^/]+)/([^/]+)$ ]] || die "bad/missing GitHub URL for $repo"
-  name="${BASH_REMATCH[2]}"
-  printf 'https://codeload.github.com/%s/%s/tar.gz/%s
-' "${BASH_REMATCH[1]}" "$name" "$branch"
 }
 
 fetch_parse(){
@@ -167,10 +159,10 @@ fetch_parse(){
 
           prepare_index_spec "$repo"
 
-          if ! rpmspec --parse "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.expanded.spec" 2>"$OUT/$repo/.parse.err"; then
+          rpmspec --parse "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.expanded.spec" 2>"$OUT/$repo/.parse.err" || {
             sed "s/^/[parse $repo] /" "$OUT/$repo/.parse.err" | tee -a "$LOG" >&2 || true
             die "rpmspec --parse failed: $repo"
-          fi
+          }
 
           return
         fi
@@ -182,14 +174,41 @@ fetch_parse(){
   die "could not fetch full repo with root spec: $repo"
 }
 
-clean(){
-  local x="$1" repo="${2:-}"
-  [[ -n "$repo" ]] && x="${x//%\{name\}/$repo}"
-  x="${x//%\{?_isa\}/}"
-  x="${x//%\{EVRD\}/}"
-  x="${x//%\{_lib\}/lib}"
-  x="${x//%_lib/lib}"
-  sed -E 's/#.*//;s/%\{[^}]+\}//g;s/[<>=].*//;s/^[[:space:]("'"'"']+//;s/[[:space:],)"'"'"']+$//' <<< "$x" | awk '{print $1}'
+rpm_name(){
+  # rpmspec query output can still contain relation/version suffixes.
+  # This strips only generic RPM dependency syntax; macro expansion is handled by rpmspec.
+  local x="$1"
+  sed -E '
+    s/#.*//;
+    s/[[:space:]]+(>=|<=|=|>|<).*$//;
+    s/^[[:space:]("'"'"']+//;
+    s/[[:space:],)"'"'"']+$//;
+  ' <<< "$x" | awk '{print $1}'
+}
+
+query_spec(){
+  local repo="$1" mode="$2"
+
+  case "$mode" in
+    names)         rpmspec -q --qf '%{NAME}\n' "$OUT/$repo/.with-compat.spec" ;;
+    provides)      rpmspec -q --provides "$OUT/$repo/.with-compat.spec" ;;
+    requires)      rpmspec -q --requires "$OUT/$repo/.with-compat.spec" ;;
+    buildrequires) rpmspec -q --buildrequires "$OUT/$repo/.with-compat.spec" ;;
+    *)             die "unknown query mode: $mode" ;;
+  esac
+}
+
+query_names(){
+  local repo="$1" mode="$2" out="$OUT/$repo/.query-$mode"
+
+  if ! query_spec "$repo" "$mode" > "$out" 2>"$OUT/$repo/.query-$mode.err"; then
+    sed "s/^/[rpmspec $mode $repo] /" "$OUT/$repo/.query-$mode.err" | tee -a "$LOG" >&2 || true
+    die "rpmspec query failed: $mode for $repo"
+  fi
+
+  while read -r line; do
+    rpm_name "$line"
+  done < "$out" | awk 'NF'
 }
 
 add_provider(){
@@ -201,46 +220,15 @@ add_provider(){
 }
 
 index_repo(){
-  local repo="$1"
+  local repo="$1" p
 
-  if ! rpmspec -q --qf '%{NAME}\n' "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.names" 2>"$OUT/$repo/.query.err"; then
-    sed "s/^/[query $repo] /" "$OUT/$repo/.query.err" | tee -a "$LOG" >&2 || true
-    die "rpmspec -q failed: $repo"
-  fi
+  while read -r p; do
+    add_provider "$p" "$repo"
+  done < <(query_names "$repo" names)
 
-  while read -r p; do add_provider "$p" "$repo"; done < "$OUT/$repo/.names"
-
-  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*Provides[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$OUT/$repo/.expanded.spec" |
-  while read -r line; do clean "$line" "$repo"; done |
-  while read -r p; do add_provider "$p" "$repo"; done
-}
-
-deps(){
-  local repo="$1" line word
-  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*(Requires|BuildRequires)[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$OUT/$repo/.expanded.spec" |
-  while read -r line; do
-    line="${line#\(}"; line="${line%\)}"
-    line="${line%% if *}"; line="${line%% or *}"; line="${line%% and *}"
-    if [[ "$line" =~ [[:space:]](>=|<=|=|>|<)[[:space:]] ]]; then
-      clean "$line" "$repo"
-    else
-      for word in $line; do clean "$word" "$repo"; done
-    fi
-  done
-}
-
-build_deps(){
-  local repo="$1" line word
-  awk 'BEGIN{IGNORECASE=1}/^[[:space:]]*BuildRequires[[:space:]]*:/{sub(/^[^:]*:[[:space:]]*/,"");print}' "$OUT/$repo/.expanded.spec" |
-  while read -r line; do
-    line="${line#\(}"; line="${line%\)}"
-    line="${line%% if *}"; line="${line%% or *}"; line="${line%% and *}"
-    if [[ "$line" =~ [[:space:]](>=|<=|=|>|<)[[:space:]] ]]; then
-      clean "$line" "$repo"
-    else
-      for word in $line; do clean "$word" "$repo"; done
-    fi
-  done
+  while read -r p; do
+    add_provider "$p" "$repo"
+  done < <(query_names "$repo" provides)
 }
 
 provider(){
@@ -261,8 +249,49 @@ download_index_all(){
   log "Providers indexed: $(wc -l < .providers.tsv)"
 }
 
+dep_items(){
+  local repo="$1" kind dep
+
+  while read -r dep; do
+    printf 'BuildRequires\t%s\n' "$dep"
+  done < <(query_names "$repo" buildrequires)
+
+  while read -r dep; do
+    printf 'Requires\t%s\n' "$dep"
+  done < <(query_names "$repo" requires)
+}
+
+scan_repo_deps(){
+  local repo="$1" kind dep prov
+
+  while IFS=$'\t' read -r kind dep; do
+    [[ -n "$dep" ]] || continue
+    wanted "$dep" || continue
+
+    prov="$(provider "$dep")"
+    [[ -n "$prov" ]] || die "no provider for $kind '$dep' while processing repo '$repo'"
+
+    if [[ "$repo" == "$ROOT" && "$prov" != "$ROOT" ]]; then
+      grep -Fxq "$prov" "$OUT/.task-sonicde.requires" 2>/dev/null || echo "$prov" >> "$OUT/.task-sonicde.requires"
+    fi
+
+    if wanted "$prov" && ! grep -Fxq "$prov" .processed "$q" 2>/dev/null; then
+      log "$repo needs $dep -> $prov"
+      echo "$prov" >> "$q"
+    fi
+
+    [[ "$prov" == "$repo" ]] && continue
+
+    printf '%s\t%s\n' "$prov" "$repo" >> .deps
+    case "${kind,,}" in
+      buildrequires) printf '%s\t%s\n' "$prov" "$repo" >> .builddeps ;;
+      requires)      printf '%s\t%s\n' "$prov" "$repo" >> .runtimedeps ;;
+    esac
+  done < <(dep_items "$repo")
+}
+
 walk(){
-  local q repo dep prov
+  local q repo
   q="$(mktemp)"
   echo "$ROOT" > "$q"
 
@@ -272,37 +301,11 @@ walk(){
     repo="$(head -n1 "$q")"
     sed -i '1d' "$q"
     grep -Fxq "$repo" .processed 2>/dev/null && continue
-    [[ -f "$OUT/$repo/.expanded.spec" ]] || die "repo not indexed: $repo"
+    [[ -f "$OUT/$repo/.with-compat.spec" ]] || die "repo not indexed: $repo"
 
     log "Processing repo: $repo"
     echo "$repo" >> .processed
-
-    while read -r dep; do
-      [[ -n "$dep" ]] || continue
-      wanted "$dep" || continue
-
-      prov="$(provider "$dep")"
-      [[ -n "$prov" ]] || die "no provider for dependency '$dep' while processing repo '$repo'"
-
-      if [[ "$repo" == "$ROOT" && "$prov" != "$ROOT" ]]; then
-        grep -Fxq "$prov" "$OUT/.task-sonicde.requires" 2>/dev/null || echo "$prov" >> "$OUT/.task-sonicde.requires"
-      fi
-
-      if wanted "$prov" && ! grep -Fxq "$prov" .processed "$q" 2>/dev/null; then
-        log "$repo needs $dep -> $prov"
-        echo "$prov" >> "$q"
-      fi
-    done < <(deps "$repo")
-
-    while read -r dep; do
-      [[ -n "$dep" ]] || continue
-      wanted "$dep" || continue
-
-      prov="$(provider "$dep")"
-      [[ -n "$prov" ]] || die "no provider for dependency '$dep' while ordering repo '$repo'"
-
-      [[ "$prov" != "$repo" ]] && printf '%s\t%s\n' "$prov" "$repo" >> .deps
-    done < <(deps "$repo")
+    scan_repo_deps "$repo"
   done
 
   rm -f "$q"
@@ -338,32 +341,37 @@ EOF
 }
 
 toposort(){
-  # Build order uses both BuildRequires and runtime Requires edges because
-  # Fedora dnf must be able to install BuildRequires providers and their
-  # runtime dependency chains from the local repo. Runtime dependencies can
-  # contain cycles, so collapse strongly connected components instead of
-  # aborting on a cycle.
-  python3 - .processed .deps > "$OUT/.order" <<'PY'
+  # Use all provider dependencies to keep runtime dependencies installable, but
+  # do not let runtime dependency cycles destroy the useful BuildRequires order.
+  #
+  # Algorithm:
+  # 1. Collapse SCCs using all edges (.deps = BuildRequires + Requires).
+  # 2. Topologically order the SCCs.
+  # 3. Inside each SCC, topologically order only BuildRequires edges.
+  #    If BuildRequires itself has a cycle, keep the original order and warn.
+  python3 - .processed .deps .builddeps > "$OUT/.order" <<'PY'
 import sys
-from collections import defaultdict
+from collections import defaultdict, deque
 
 nodes = [x.strip() for x in open(sys.argv[1]) if x.strip()]
 node_set = set(nodes)
-graph = defaultdict(set)
 
-for line in open(sys.argv[2]):
-    if not line.strip():
-        continue
-    dep, pkg = line.rstrip("\n").split("\t", 1)
-    if dep in node_set and pkg in node_set and dep != pkg:
-        graph[pkg].add(dep)
+def read_edges(path):
+    g = defaultdict(set)
+    for line in open(path):
+        if not line.strip():
+            continue
+        dep, pkg = line.rstrip("\n").split("\t", 1)
+        if dep in node_set and pkg in node_set and dep != pkg:
+            g[pkg].add(dep)
+    return g
 
-# Tarjan SCCs on dependency graph.
+all_graph = read_edges(sys.argv[2])
+build_graph = read_edges(sys.argv[3])
+
 index = 0
-stack = []
-on_stack = set()
-idx = {}
-low = {}
+stack, on_stack = [], set()
+idx, low = {}, {}
 components = []
 
 def strongconnect(v):
@@ -374,7 +382,7 @@ def strongconnect(v):
     stack.append(v)
     on_stack.add(v)
 
-    for w in graph[v]:
+    for w in all_graph[v]:
         if w not in idx:
             strongconnect(w)
             low[v] = min(low[v], low[w])
@@ -401,38 +409,75 @@ for i, comp in enumerate(components):
         comp_id[n] = i
 
 comp_deps = defaultdict(set)
-for pkg, deps in graph.items():
+for pkg, deps in all_graph.items():
     for dep in deps:
         a, b = comp_id[pkg], comp_id[dep]
         if a != b:
             comp_deps[a].add(b)
 
-done = set()
-out_comps = []
+done, comp_order = set(), []
 
-def visit(c):
+def visit_comp(c):
     if c in done:
         return
     for d in sorted(comp_deps[c]):
-        visit(d)
+        visit_comp(d)
     done.add(c)
-    out_comps.append(c)
+    comp_order.append(c)
 
 for n in nodes:
-    visit(comp_id[n])
+    visit_comp(comp_id[n])
+
+def order_inside_component(comp):
+    comp_set = set(comp)
+    stable = [n for n in nodes if n in comp_set]
+
+    indeg = {n: 0 for n in stable}
+    children = defaultdict(list)
+
+    for pkg in stable:
+        for dep in build_graph[pkg]:
+            if dep in comp_set:
+                children[dep].append(pkg)
+                indeg[pkg] += 1
+
+    q = deque([n for n in stable if indeg[n] == 0])
+    out = []
+
+    while q:
+        n = q.popleft()
+        out.append(n)
+        for child in sorted(children[n], key=lambda x: stable.index(x)):
+            indeg[child] -= 1
+            if indeg[child] == 0:
+                q.append(child)
+
+    if len(out) != len(stable):
+        print(
+            "BuildRequires cycle inside runtime group; preserving discovery order for: "
+            + ", ".join(stable),
+            file=sys.stderr,
+        )
+        return stable
+
+    return out
 
 seen = set()
-for c in out_comps:
+for c in comp_order:
     comp = [n for n in nodes if comp_id[n] == c]
+    ordered = order_inside_component(comp)
     if len(comp) > 1:
-        print("runtime dependency cycle group: " + ", ".join(comp), file=sys.stderr)
-    for n in comp:
+        print(
+            "runtime dependency cycle group ordered by BuildRequires: "
+            + ", ".join(ordered),
+            file=sys.stderr,
+        )
+    for n in ordered:
         if n not in seen:
             seen.add(n)
             print(n)
 PY
 }
-
 
 commit_and_queue(){
   mkdir -p "$OUT/$COMPAT"
@@ -440,12 +485,14 @@ commit_and_queue(){
 
   cp .processed "$OUT/.processed"
   cp .deps "$OUT/.deps"
+  cp .builddeps "$OUT/.builddeps"
+  cp .runtimedeps "$OUT/.runtimedeps"
   cp .applied-patches "$OUT/.applied-patches"
 
   log "Final build order: $(wc -l < "$OUT/.order") packages"
   sed 's/^/  /' "$OUT/.order" | tee -a "$LOG" >&2
 
-  rm -f .repos.tsv .providers.tsv .processed .deps .applied-patches
+  rm -f .repos.tsv .providers.tsv .processed .deps .builddeps .runtimedeps .applied-patches
 
   (cd "$OUT"; git init -q; git add .; git -c user.name=builder -c user.email=builder@example.invalid commit --allow-empty -qm specs)
 
@@ -468,5 +515,7 @@ verify_all_patches_applied
 walk
 write_task
 sort -u .deps -o .deps
+sort -u .builddeps -o .builddeps
+sort -u .runtimedeps -o .runtimedeps
 toposort
 commit_and_queue
