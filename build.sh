@@ -199,7 +199,9 @@ query_spec(){
 }
 
 query_names(){
-  local repo="$1" mode="$2" out="$OUT/$repo/.query-$mode"
+  local repo="$1"
+  local mode="$2"
+  local out="$OUT/$repo/.query-$mode"
 
   if ! query_spec "$repo" "$mode" > "$out" 2>"$OUT/$repo/.query-$mode.err"; then
     sed "s/^/[rpmspec $mode $repo] /" "$OUT/$repo/.query-$mode.err" | tee -a "$LOG" >&2 || true
