@@ -6,6 +6,7 @@ ROOT=task-sonicde
 COMPAT=openmandriva-buildrequires-compat
 MACROS_FILE="${MACROS_FILE:-macros/openmandriva-compat.macros}"
 PATCH_DIR="${PATCH_DIR:-patches}"
+REPLACEMENTS_FILE="${REPLACEMENTS_FILE:-replacements/specs.sed}"
 INDEX_PATCH_ROOT="$OUT/.index-patched"
 LOG="${LOG:-build-discovery.log}"
 
@@ -23,6 +24,7 @@ mkdir -p "$OUT"
 : > .runtimedeps
 : > .applied-patches
 : > "$OUT/.task-sonicde.requires"
+: > "$OUT/.replacement-applied.tsv"
 : > "$LOG"
 
 log(){ printf '[%s] %s\n' "$(date -u +'%H:%M:%S')" "$*" | tee -a "$LOG" >&2; }
@@ -36,9 +38,11 @@ need(){
   command -v rpmspec >/dev/null || die "rpmspec missing"
   command -v tar >/dev/null || die "tar missing"
   command -v patch >/dev/null || die "patch missing"
+  command -v sed >/dev/null || die "sed missing"
   [[ -f "$MACROS_FILE" ]] || die "macro file missing: $MACROS_FILE"
   [[ -d "$PATCH_DIR" ]] || log "No patch directory found: $PATCH_DIR"
-  [[ -f "specs/$COMPAT.spec" ]] || die "compat spec missing: specs/$COMPAT.spec"
+  [[ -f "$REPLACEMENTS_FILE" ]] || die "replacements sed file missing: $REPLACEMENTS_FILE"
+  compgen -G "specs/*.spec" >/dev/null || die "no local spec files found in specs/"
 }
 
 github_repos(){
@@ -107,6 +111,55 @@ archive_url(){
   printf 'https://codeload.github.com/%s/%s/tar.gz/%s\n' "${BASH_REMATCH[1]}" "$name" "$branch"
 }
 
+apply_spec_replacements(){
+  local spec="$1" rel before after
+  [[ -f "$spec" ]] || die "spec file missing for replacements: $spec"
+
+  before="$(mktemp)"
+  after="$(mktemp)"
+  cp "$spec" "$before"
+
+  if ! sed -f "$REPLACEMENTS_FILE" "$before" > "$after"; then
+    rm -f "$before" "$after"
+    die "sed replacements failed for: $spec"
+  fi
+
+  if ! cmp -s "$before" "$after"; then
+    cp "$after" "$spec"
+    rel="${spec#"$PWD"/}"
+    log "Applied replacements to: $rel"
+    printf '%s\t%s\n' "$rel" "$REPLACEMENTS_FILE" >> "$OUT/.replacement-applied.tsv"
+  fi
+
+  rm -f "$before" "$after"
+}
+
+local_spec_names(){
+  local spec
+  find specs -maxdepth 1 -type f -name '*.spec' -printf '%f\n' |
+  sed 's/\.spec$//' |
+  LC_ALL=C sort
+}
+
+copy_local_specs(){
+  local name src dst
+  : > "$OUT/.local-specs"
+
+  while read -r name; do
+    [[ -n "$name" ]] || continue
+    src="specs/$name.spec"
+    dst="$OUT/$name/$name.spec"
+
+    mkdir -p "$OUT/$name"
+    cp "$src" "$dst"
+    apply_spec_replacements "$dst"
+    printf '%s\n' "$name" >> "$OUT/.local-specs"
+  done < <(local_spec_names)
+
+  [[ -s "$OUT/.local-specs" ]] || die "no local specs copied from specs/"
+  log "Local specs copied: $(wc -l < "$OUT/.local-specs")"
+}
+
 prepare_index_spec(){
   local repo="$1" patch_file="$PATCH_DIR/$repo.spec.patch" index_repo="$INDEX_PATCH_ROOT/$repo"
 
@@ -123,6 +176,7 @@ prepare_index_spec(){
     printf '%s\n' "$patch_file" >> .applied-patches
   fi
 
+  apply_spec_replacements "$index_repo/$repo.spec"
   cat "$MACROS_FILE" "$index_repo/$repo.spec" > "$OUT/$repo/.with-compat.spec"
 }
 
@@ -157,6 +211,7 @@ fetch_parse(){
           log "Fetched full repo: $repo ($branch)"
           rm -rf "$tmp"
 
+          apply_spec_replacements "$OUT/$repo/$repo.spec"
           prepare_index_spec "$repo"
 
           rpmspec --parse "$OUT/$repo/.with-compat.spec" > "$OUT/$repo/.expanded.spec" 2>"$OUT/$repo/.parse.err" || {
@@ -531,16 +586,16 @@ PY
 
 
 commit_and_queue(){
-  mkdir -p "$OUT/$COMPAT"
-  cp "specs/$COMPAT.spec" "$OUT/$COMPAT/$COMPAT.spec"
-
   cp .processed "$OUT/.processed"
   cp .deps "$OUT/.deps"
   cp .builddeps "$OUT/.builddeps"
   cp .runtimedeps "$OUT/.runtimedeps"
   cp .applied-patches "$OUT/.applied-patches"
 
-  log "Final build order: $(wc -l < "$OUT/.order") packages"
+  log "Final local spec order: $(wc -l < "$OUT/.local-specs") packages"
+  sed 's/^/  /' "$OUT/.local-specs" | tee -a "$LOG" >&2
+
+  log "Final SonicDE build order: $(wc -l < "$OUT/.order") packages"
   sed 's/^/  /' "$OUT/.order" | tee -a "$LOG" >&2
 
   rm -f .repos.tsv .providers.tsv .processed .deps .builddeps .runtimedeps .applied-patches
@@ -550,16 +605,21 @@ commit_and_queue(){
   url="file://$PWD/$OUT"
   commit="$(git -C "$OUT" rev-parse HEAD)"
 
-  log "Queue first: $COMPAT"
-  rpm-build-queue add --package "$COMPAT" --clone-url "$url" --commit "$commit" --subdir "$COMPAT" --spec "$COMPAT.spec"
+  while read -r repo; do
+    [[ -n "$repo" ]] || continue
+    log "Queue local spec: $repo"
+    rpm-build-queue add --package "$repo" --clone-url "$url" --commit "$commit" --subdir "$repo" --spec "$repo.spec"
+  done < "$OUT/.local-specs"
 
   while read -r repo; do
+    [[ -n "$repo" ]] || continue
     log "Queue: $repo"
     rpm-build-queue add --package "$repo" --clone-url "$url" --commit "$commit" --subdir "$repo" --spec "$repo.spec"
   done < "$OUT/.order"
 }
 
 need
+copy_local_specs
 github_repos
 download_index_all
 verify_all_patches_applied
