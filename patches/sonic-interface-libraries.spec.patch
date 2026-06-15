@@ -1,0 +1,6 @@
+diff --git a/sonic-interface-libraries/sonic-interface-libraries.spec b/sonic-interface-libraries/sonic-interface-libraries.spec
+--- a/sonic-interface-libraries/sonic-interface-libraries.spec
++++ b/sonic-interface-libraries/sonic-interface-libraries.spec
+@@ -63 +63 @@
+-BuildRequires: %{_lib}SonicDEKeybindDaemon-devel
++BuildRequires: %{_lib}SonicFrameworksKeybind-devel
