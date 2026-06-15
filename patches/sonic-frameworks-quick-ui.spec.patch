@@ -1,7 +1,0 @@
-diff --git a/sonic-frameworks-quick-ui/sonic-frameworks-quick-ui.spec b/sonic-frameworks-quick-ui/sonic-frameworks-quick-ui.spec
---- a/sonic-frameworks-quick-ui/sonic-frameworks-quick-ui.spec
-+++ b/sonic-frameworks-quick-ui/sonic-frameworks-quick-ui.spec
-@@ -59 +59 @@
--Requires: qml(org.kde.desktop)
-+Requires: kf6-qqc2-desktop-style
-
