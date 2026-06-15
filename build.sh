@@ -346,21 +346,21 @@ EOF
 toposort(){
   # Build order is based on what must be installable before building each package.
   #
-  # For package P:
-  # - every BuildRequires provider must already be built
-  # - every runtime dependency of those BuildRequires providers must also already
-  #   be built, because dnf must install the BuildRequires packages successfully
+  # Strict rule:
+  #   package P needs every BuildRequires provider built first, plus the runtime
+  #   dependency closure of those BuildRequires providers, because dnf must be
+  #   able to install BuildRequires successfully.
   #
-  # This is different from simply topologically sorting all Requires edges. Runtime
-  # dependencies can contain legitimate RPM cycles, so we use runtime edges to
-  # expand build-time installability requirements, not as a hard package build
-  # order by themselves.
+  # If that effective build-time dependency graph has a cycle, the script exits
+  # before queueing any builds. No guesses, no discovery-order fallback.
   python3 - .processed .builddeps .runtimedeps .deps > "$OUT/.order" <<'PY'
 import sys
-from collections import defaultdict, deque
+from collections import defaultdict
+from heapq import heappush, heappop
 
 nodes = [x.strip() for x in open(sys.argv[1]) if x.strip()]
 node_set = set(nodes)
+stable_index = {n: i for i, n in enumerate(nodes)}
 
 def read_edges(path):
     g = defaultdict(set)
@@ -370,6 +370,8 @@ def read_edges(path):
         dep, pkg = line.rstrip("\n").split("\t", 1)
         if dep in node_set and pkg in node_set and dep != pkg:
             g[pkg].add(dep)   # pkg needs dep before pkg can build/install
+    for n in nodes:
+        g[n] |= set()
     return g
 
 build_graph = read_edges(sys.argv[2])
@@ -395,7 +397,7 @@ def runtime_closure(start):
     return out
 
 # Effective build-time graph:
-# pkg -> all repos that must already have built before pkg can build.
+# pkg -> repos that must be built before pkg.
 effective_graph = defaultdict(set)
 for pkg in nodes:
     for br_provider in build_graph[pkg]:
@@ -403,13 +405,14 @@ for pkg in nodes:
             continue
         effective_graph[pkg].add(br_provider)
 
-        # If installing the BuildRequires provider needs other Sonic/Silver
-        # runtime packages, those must also be available before pkg builds.
+        # Installing a BuildRequires provider can require its runtime closure.
         for dep in runtime_closure(br_provider):
             if dep != pkg:
                 effective_graph[pkg].add(dep)
 
-# Report runtime SCCs for visibility only. These are not treated as fatal.
+for n in nodes:
+    effective_graph[n] |= set()
+
 def tarjan(graph):
     index = 0
     stack, on_stack = [], set()
@@ -447,40 +450,78 @@ def tarjan(graph):
 
     return components
 
+# Keep runtime-cycle reporting informational, because runtime RPM cycles can be real.
 for comp in tarjan(all_graph):
     if len(comp) > 1:
         ordered = [n for n in nodes if n in set(comp)]
         print("runtime dependency cycle group observed: " + ", ".join(ordered), file=sys.stderr)
 
-# Topologically sort effective build-time graph.
+# Strict topological sort of effective build-time graph.
+children = defaultdict(set)
 indeg = {n: 0 for n in nodes}
-children = defaultdict(list)
 
 for pkg in nodes:
     for dep in effective_graph[pkg]:
-        children[dep].append(pkg)
+        children[dep].add(pkg)
         indeg[pkg] += 1
 
-stable_index = {n: i for i, n in enumerate(nodes)}
-q = deque([n for n in nodes if indeg[n] == 0])
+ready = []
+for n in nodes:
+    if indeg[n] == 0:
+        heappush(ready, (stable_index[n], n))
+
 out = []
 
-while q:
-    n = q.popleft()
+while ready:
+    _, n = heappop(ready)
     out.append(n)
     for child in sorted(children[n], key=lambda x: stable_index[x]):
         indeg[child] -= 1
         if indeg[child] == 0:
-            q.append(child)
+            heappush(ready, (stable_index[child], child))
 
 if len(out) != len(nodes):
-    remaining = [n for n in nodes if n not in set(out)]
-    print(
-        "effective build-time dependency cycle; appending unresolved group in discovery order: "
-        + ", ".join(remaining),
-        file=sys.stderr,
-    )
-    out.extend(remaining)
+    ordered_out = set(out)
+    remaining = [n for n in nodes if n not in ordered_out]
+    remaining_set = set(remaining)
+
+    print("ERROR: effective build-time dependency graph is cyclic or ambiguous.", file=sys.stderr)
+    print("No build queue was created. Fix package metadata/compat providers/spec patches first.", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Unorderable packages:", file=sys.stderr)
+    for n in remaining:
+        print(f"  {n}", file=sys.stderr)
+
+    print("", file=sys.stderr)
+    print("Unmet effective edges inside unresolved group:", file=sys.stderr)
+    for pkg in remaining:
+        deps = sorted(effective_graph[pkg] & remaining_set, key=lambda x: stable_index[x])
+        if deps:
+            print(f"  {pkg} needs: {', '.join(deps)}", file=sys.stderr)
+
+    print("", file=sys.stderr)
+    print("Direct BuildRequires edges inside unresolved group:", file=sys.stderr)
+    any_build = False
+    for pkg in remaining:
+        deps = sorted(build_graph[pkg] & remaining_set, key=lambda x: stable_index[x])
+        if deps:
+            any_build = True
+            print(f"  {pkg} BuildRequires providers: {', '.join(deps)}", file=sys.stderr)
+    if not any_build:
+        print("  none", file=sys.stderr)
+
+    print("", file=sys.stderr)
+    print("Runtime edges inside unresolved group:", file=sys.stderr)
+    any_runtime = False
+    for pkg in remaining:
+        deps = sorted(runtime_graph[pkg] & remaining_set, key=lambda x: stable_index[x])
+        if deps:
+            any_runtime = True
+            print(f"  {pkg} Requires providers: {', '.join(deps)}", file=sys.stderr)
+    if not any_runtime:
+        print("  none", file=sys.stderr)
+
+    sys.exit(1)
 
 for n in out:
     print(n)
