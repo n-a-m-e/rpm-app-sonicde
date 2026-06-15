@@ -1,0 +1,14 @@
+diff --git a/sonic-frameworks-io/sonic-frameworks-io.spec b/sonic-frameworks-io/sonic-frameworks-io.spec
+--- a/sonic-frameworks-io/sonic-frameworks-io.spec
++++ b/sonic-frameworks-io/sonic-frameworks-io.spec
+@@ -73 +73 @@
+-BuildRequires: %mklibname -d KF6IconWidgets
++BuildRequires: cmake(KF6IconWidgets)
+@@ -115,1 +115,2 @@
++Provides: cmake(KF6KIO)
+ Conflicts:  %{_lib}KF6KIO-devel
+@@ -124 +124,0 @@
+-rm -rf %{buildroot}/%{_libdir}/cmake
+@@ -166 +166 @@
+-# %{_libdir}/cmake/KF6KIO
++%{_libdir}/cmake/KF6KIO
