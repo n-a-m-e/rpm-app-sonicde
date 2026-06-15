@@ -249,6 +249,7 @@ download_index_all(){
   sort -u .providers.tsv -o .providers.tsv
   cp .providers.tsv "$OUT/.providers.tsv"
   log "Providers indexed: $(wc -l < .providers.tsv)"
+  [[ -s .providers.tsv ]] || die "provider index is empty"
 }
 
 dep_items(){
@@ -343,15 +344,18 @@ EOF
 }
 
 toposort(){
-  # Use all provider dependencies to keep runtime dependencies installable, but
-  # do not let runtime dependency cycles destroy the useful BuildRequires order.
+  # Build order is based on what must be installable before building each package.
   #
-  # Algorithm:
-  # 1. Collapse SCCs using all edges (.deps = BuildRequires + Requires).
-  # 2. Topologically order the SCCs.
-  # 3. Inside each SCC, topologically order only BuildRequires edges.
-  #    If BuildRequires itself has a cycle, keep the original order and warn.
-  python3 - .processed .deps .builddeps > "$OUT/.order" <<'PY'
+  # For package P:
+  # - every BuildRequires provider must already be built
+  # - every runtime dependency of those BuildRequires providers must also already
+  #   be built, because dnf must install the BuildRequires packages successfully
+  #
+  # This is different from simply topologically sorting all Requires edges. Runtime
+  # dependencies can contain legitimate RPM cycles, so we use runtime edges to
+  # expand build-time installability requirements, not as a hard package build
+  # order by themselves.
+  python3 - .processed .builddeps .runtimedeps .deps > "$OUT/.order" <<'PY'
 import sys
 from collections import defaultdict, deque
 
@@ -365,121 +369,125 @@ def read_edges(path):
             continue
         dep, pkg = line.rstrip("\n").split("\t", 1)
         if dep in node_set and pkg in node_set and dep != pkg:
-            g[pkg].add(dep)
+            g[pkg].add(dep)   # pkg needs dep before pkg can build/install
     return g
 
-all_graph = read_edges(sys.argv[2])
-build_graph = read_edges(sys.argv[3])
+build_graph = read_edges(sys.argv[2])
+runtime_graph = read_edges(sys.argv[3])
+all_graph = read_edges(sys.argv[4])
 
-index = 0
-stack, on_stack = [], set()
-idx, low = {}, {}
-components = []
+runtime_closure_cache = {}
 
-def strongconnect(v):
-    global index
-    idx[v] = index
-    low[v] = index
-    index += 1
-    stack.append(v)
-    on_stack.add(v)
+def runtime_closure(start):
+    if start in runtime_closure_cache:
+        return set(runtime_closure_cache[start])
 
-    for w in all_graph[v]:
-        if w not in idx:
-            strongconnect(w)
-            low[v] = min(low[v], low[w])
-        elif w in on_stack:
-            low[v] = min(low[v], idx[w])
+    out = set()
+    stack = list(runtime_graph[start])
+    while stack:
+        dep = stack.pop()
+        if dep in out:
+            continue
+        out.add(dep)
+        stack.extend(runtime_graph[dep] - out)
 
-    if low[v] == idx[v]:
-        comp = []
-        while True:
-            w = stack.pop()
-            on_stack.remove(w)
-            comp.append(w)
-            if w == v:
-                break
-        components.append(comp)
-
-for n in nodes:
-    if n not in idx:
-        strongconnect(n)
-
-comp_id = {}
-for i, comp in enumerate(components):
-    for n in comp:
-        comp_id[n] = i
-
-comp_deps = defaultdict(set)
-for pkg, deps in all_graph.items():
-    for dep in deps:
-        a, b = comp_id[pkg], comp_id[dep]
-        if a != b:
-            comp_deps[a].add(b)
-
-done, comp_order = set(), []
-
-def visit_comp(c):
-    if c in done:
-        return
-    for d in sorted(comp_deps[c]):
-        visit_comp(d)
-    done.add(c)
-    comp_order.append(c)
-
-for n in nodes:
-    visit_comp(comp_id[n])
-
-def order_inside_component(comp):
-    comp_set = set(comp)
-    stable = [n for n in nodes if n in comp_set]
-
-    indeg = {n: 0 for n in stable}
-    children = defaultdict(list)
-
-    for pkg in stable:
-        for dep in build_graph[pkg]:
-            if dep in comp_set:
-                children[dep].append(pkg)
-                indeg[pkg] += 1
-
-    q = deque([n for n in stable if indeg[n] == 0])
-    out = []
-
-    while q:
-        n = q.popleft()
-        out.append(n)
-        for child in sorted(children[n], key=lambda x: stable.index(x)):
-            indeg[child] -= 1
-            if indeg[child] == 0:
-                q.append(child)
-
-    if len(out) != len(stable):
-        print(
-            "BuildRequires cycle inside runtime group; preserving discovery order for: "
-            + ", ".join(stable),
-            file=sys.stderr,
-        )
-        return stable
-
+    runtime_closure_cache[start] = set(out)
     return out
 
-seen = set()
-for c in comp_order:
-    comp = [n for n in nodes if comp_id[n] == c]
-    ordered = order_inside_component(comp)
+# Effective build-time graph:
+# pkg -> all repos that must already have built before pkg can build.
+effective_graph = defaultdict(set)
+for pkg in nodes:
+    for br_provider in build_graph[pkg]:
+        if br_provider == pkg:
+            continue
+        effective_graph[pkg].add(br_provider)
+
+        # If installing the BuildRequires provider needs other Sonic/Silver
+        # runtime packages, those must also be available before pkg builds.
+        for dep in runtime_closure(br_provider):
+            if dep != pkg:
+                effective_graph[pkg].add(dep)
+
+# Report runtime SCCs for visibility only. These are not treated as fatal.
+def tarjan(graph):
+    index = 0
+    stack, on_stack = [], set()
+    idx, low = {}, {}
+    components = []
+
+    def strongconnect(v):
+        nonlocal index
+        idx[v] = index
+        low[v] = index
+        index += 1
+        stack.append(v)
+        on_stack.add(v)
+
+        for w in graph[v]:
+            if w not in idx:
+                strongconnect(w)
+                low[v] = min(low[v], low[w])
+            elif w in on_stack:
+                low[v] = min(low[v], idx[w])
+
+        if low[v] == idx[v]:
+            comp = []
+            while True:
+                w = stack.pop()
+                on_stack.remove(w)
+                comp.append(w)
+                if w == v:
+                    break
+            components.append(comp)
+
+    for n in nodes:
+        if n not in idx:
+            strongconnect(n)
+
+    return components
+
+for comp in tarjan(all_graph):
     if len(comp) > 1:
-        print(
-            "runtime dependency cycle group ordered by BuildRequires: "
-            + ", ".join(ordered),
-            file=sys.stderr,
-        )
-    for n in ordered:
-        if n not in seen:
-            seen.add(n)
-            print(n)
+        ordered = [n for n in nodes if n in set(comp)]
+        print("runtime dependency cycle group observed: " + ", ".join(ordered), file=sys.stderr)
+
+# Topologically sort effective build-time graph.
+indeg = {n: 0 for n in nodes}
+children = defaultdict(list)
+
+for pkg in nodes:
+    for dep in effective_graph[pkg]:
+        children[dep].append(pkg)
+        indeg[pkg] += 1
+
+stable_index = {n: i for i, n in enumerate(nodes)}
+q = deque([n for n in nodes if indeg[n] == 0])
+out = []
+
+while q:
+    n = q.popleft()
+    out.append(n)
+    for child in sorted(children[n], key=lambda x: stable_index[x]):
+        indeg[child] -= 1
+        if indeg[child] == 0:
+            q.append(child)
+
+if len(out) != len(nodes):
+    remaining = [n for n in nodes if n not in set(out)]
+    print(
+        "effective build-time dependency cycle; appending unresolved group in discovery order: "
+        + ", ".join(remaining),
+        file=sys.stderr,
+    )
+    out.extend(remaining)
+
+for n in out:
+    print(n)
 PY
 }
+
+
 
 commit_and_queue(){
   mkdir -p "$OUT/$COMPAT"
