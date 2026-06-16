@@ -1,0 +1,16 @@
+diff --git a/sonic-frameworks-io-extras/sonic-frameworks-io-extras.spec b/sonic-frameworks-io-extras/sonic-frameworks-io-extras.spec
+--- a/sonic-frameworks-io-extras/sonic-frameworks-io-extras.spec
++++ b/sonic-frameworks-io-extras/sonic-frameworks-io-extras.spec
+@@ -49 +49,0 @@
+-BuildRequires: pkgconfig(libappimage)
+@@ -75 +75,0 @@
+-BuildRequires: kdsoap-qt6-devel
+@@ -100,1 +100,3 @@
++Provides: cmake(KioArchive6)
++Provides: %{_lib}kioarchive6-devel
+ Conflicts: %{_lib}kioarchive6-devel
+@@ -106 +106,0 @@
+-rm -rf %{buildroot}/%{_libdir}/cmake
+@@ -144 +144 @@
+-# %{_libdir}/cmake/KioArchive6
++%{_libdir}/cmake/KioArchive6
