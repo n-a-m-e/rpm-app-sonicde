@@ -13,6 +13,9 @@ diff --git a/sonic-frameworks-quick-ui/sonic-frameworks-quick-ui.spec b/sonic-fr
  Conflicts: %{_lib}KirigamiPlatform-devel
 @@ -75 +75,0 @@
 -rm -rf %{buildroot}/%{_libdir}/cmake
+@@ -82,1 +82,2 @@
++%{_qtdir}/metatypes/qt6kirigamiplatform_metatypes.json
+ %{_includedir}/KF6/Kirigami
 @@ -85 +85 @@
 -# %{_libdir}/cmake/KF6Kirigami*
 +%{_libdir}/cmake/KF6Kirigami*
