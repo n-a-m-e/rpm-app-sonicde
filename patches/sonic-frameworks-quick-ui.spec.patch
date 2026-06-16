@@ -1,0 +1,18 @@
+diff --git a/sonic-frameworks-quick-ui/sonic-frameworks-quick-ui.spec b/sonic-frameworks-quick-ui/sonic-frameworks-quick-ui.spec
+--- a/sonic-frameworks-quick-ui/sonic-frameworks-quick-ui.spec
++++ b/sonic-frameworks-quick-ui/sonic-frameworks-quick-ui.spec
+@@ -47,1 +47,2 @@
++Provides: kf6-kirigami
+ Conflicts:   kf6-kirigami
+@@ -60,1 +61,2 @@
++Provides: libKirigamiPlatform
+ Conflicts: %{_lib}KirigamiPlatform
+@@ -69,1 +71,3 @@
++Provides: cmake(KF6KirigamiPlatform)
++Provides: kf6-kirigami-devel
+ Conflicts: %{_lib}KirigamiPlatform-devel
+@@ -75 +75,0 @@
+-rm -rf %{buildroot}/%{_libdir}/cmake
+@@ -85 +85 @@
+-# %{_libdir}/cmake/KF6Kirigami*
++%{_libdir}/cmake/KF6Kirigami*
