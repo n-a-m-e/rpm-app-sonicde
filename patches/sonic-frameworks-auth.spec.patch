@@ -2,7 +2,7 @@ diff --git a/sonic-frameworks-auth/sonic-frameworks-auth.spec b/sonic-frameworks
 --- a/sonic-frameworks-auth/sonic-frameworks-auth.spec
 +++ b/sonic-frameworks-auth/sonic-frameworks-auth.spec
 @@ -52,1 +52,2 @@
-+Provides: kf6-kauth
++Provides:      kf6-kauth
  Conflicts:     kf6-kauth
 @@ -70,1 +71,3 @@
 +Provides: cmake(KF6Auth)
