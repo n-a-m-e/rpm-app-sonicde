@@ -7,6 +7,9 @@ diff --git a/sonic-frameworks-core-addons/sonic-frameworks-core-addons.spec b/so
  Conflicts: %{_lib}KF6CoreAddons-devel
 @@ -91 +91,0 @@
 -rm -rf %{buildroot}/%{_libdir}/cmake
+@@ -100,1 +100,2 @@
++%{_qtdir}/metatypes/qt6kf6coreaddons_metatypes.json
+ %{_includedir}/KF6/KCoreAddons
 @@ -103 +103 @@
 -# %{_libdir}/cmake/KF6CoreAddons
 +%{_libdir}/cmake/KF6CoreAddons
