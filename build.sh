@@ -11,6 +11,7 @@ SEARCHES=(
 
 DISCOVERY_BLACKLIST=(
   sonic
+  sonic-visualiser
   python-silvercity
   rust-silver
 )
