@@ -5,13 +5,13 @@ Summary:        Fedora compatibility alias for kf6-kauth-devel
 License:        MIT
 BuildArch:      noarch
 
-Requires:       %{_lib}KF6Auth-devel
+Requires:       libSonicFrameworksAuth-devel
 
 Provides:       kf6-kauth-devel
 
 %description
 Compatibility package that provides kf6-kauth-devel by requiring
-Fedora's %{_lib}KF6Auth-devel package. It contains no files.
+Fedora's libSonicFrameworksAuth-devel package. It contains no files.
 
 %prep
 %build
