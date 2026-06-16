@@ -10,9 +10,6 @@ diff --git a/sonic-frameworks-windowsystem/sonic-frameworks-windowsystem.spec b/
 @@ -74,2 +74,0 @@
 -rm -rf %{buildroot}/%{_libdir}/cmake
 -rm -rf %{buildroot}/%{_libdir}/pkgconfig
-@@ -85,1 +85,2 @@
-+%{_qtdir}/metatypes/qt6kf6windowsystem_metatypes.json
- %{_includedir}/KF6/KWindowSystem
 @@ -88,2 +88,2 @@
 -# %{_libdir}/cmake/KF6WindowSystem
 -# %{_libdir}/pkgconfig/KF6WindowSystem.pc
