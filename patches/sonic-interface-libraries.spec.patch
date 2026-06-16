@@ -1,6 +1,12 @@
 diff --git a/sonic-interface-libraries/sonic-interface-libraries.spec b/sonic-interface-libraries/sonic-interface-libraries.spec
 --- a/sonic-interface-libraries/sonic-interface-libraries.spec
 +++ b/sonic-interface-libraries/sonic-interface-libraries.spec
+@@ -47 +47 @@
+-BuildRequires: %{_lib}SonicFrameworksQuickUI-devel
++BuildRequires: cmake(KF6KirigamiPlatform)
 @@ -63 +63 @@
 -BuildRequires: %{_lib}SonicDEKeybindDaemon-devel
-+BuildRequires: %{_lib}SonicFrameworksKeybind-devel
++BuildRequires: cmake(KF6GlobalAccel)
+@@ -72,1 +72,2 @@
++BuildRequires: cmake(KF6Bookmarks)
+ BuildRequires: %{_lib}SonicFrameworksIO-devel
