@@ -1,0 +1,18 @@
+diff --git a/sonic-frameworks-gui-addons/sonic-frameworks-gui-addons.spec b/sonic-frameworks-gui-addons/sonic-frameworks-gui-addons.spec
+--- a/sonic-frameworks-gui-addons/sonic-frameworks-gui-addons.spec
++++ b/sonic-frameworks-gui-addons/sonic-frameworks-gui-addons.spec
+@@ -77,1 +77,3 @@
++Provides: cmake(KF6GuiAddons)
++Provides: %{_lib}KF6GuiAddons-devel
+ Conflicts: %{_lib}KF6GuiAddons-devel
+@@ -93,2 +93,0 @@
+-rm -rf %{buildroot}/%{_libdir}/cmake
+-rm -rf %{buildroot}/%{_libdir}/pkgconfig
+@@ -107,1 +107,2 @@
++%{_qtdir}/metatypes/qt6kf6guiaddons_metatypes.json
+ %{_includedir}/KF6/KGuiAddons
+@@ -110,2 +110,2 @@
+-# %{_libdir}/cmake/KF6GuiAddons
+-# %{_libdir}/pkgconfig/KF6GuiAddons.pc
++%{_libdir}/cmake/KF6GuiAddons
++%{_libdir}/pkgconfig/KF6GuiAddons.pc
