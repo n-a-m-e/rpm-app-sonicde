@@ -1,0 +1,6 @@
+diff --git a/sonic-audio-applet-pulse/sonic-audio-applet-pulse.spec b/sonic-audio-applet-pulse/sonic-audio-applet-pulse.spec
+--- a/sonic-audio-applet-pulse/sonic-audio-applet-pulse.spec
++++ b/sonic-audio-applet-pulse/sonic-audio-applet-pulse.spec
+@@ -26 +26 @@
+-# BuildRequires: cmake(Plasma) >= 5.90.0
++BuildRequires: cmake(Plasma)
