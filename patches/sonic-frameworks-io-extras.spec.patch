@@ -19,6 +19,9 @@ diff --git a/sonic-frameworks-io-extras/sonic-frameworks-io-extras.spec b/sonic-
  Conflicts: %{_lib}kioarchive6-devel
 @@ -106 +106,0 @@
 -rm -rf %{buildroot}/%{_libdir}/cmake
+@@ -135,1 +135,2 @@
+ %{_libdir}/libexec/wpad-detector-helper
++%doc %{_docdir}/HTML/*
 @@ -144 +144 @@
 -# %{_libdir}/cmake/KioArchive6
 +%{_libdir}/cmake/KioArchive6
