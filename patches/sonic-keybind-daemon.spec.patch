@@ -1,7 +1,8 @@
 diff --git a/sonic-keybind-daemon/sonic-keybind-daemon.spec b/sonic-keybind-daemon/sonic-keybind-daemon.spec
 --- a/sonic-keybind-daemon/sonic-keybind-daemon.spec
 +++ b/sonic-keybind-daemon/sonic-keybind-daemon.spec
-@@ -58,1 +58,3 @@
+@@ -58,1 +58,4 @@
 +BuildRequires: cmake(KF6DBusAddons)
 +BuildRequires: cmake(KF6Bookmarks)
++BuildRequires: cmake(KF6Completion)
  BuildRequires: pkgconfig(xkbcommon)
