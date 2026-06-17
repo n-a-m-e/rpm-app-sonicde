@@ -1,0 +1,18 @@
+diff --git a/sonic-activities/sonic-activities.spec b/sonic-activities/sonic-activities.spec
+--- a/sonic-activities/sonic-activities.spec
++++ b/sonic-activities/sonic-activities.spec
+@@ -60,1 +60,2 @@
++Provides: %{_lib}PlasmaActivities
+ Conflicts:    %{_lib}PlasmaActivities
+@@ -69,1 +69,4 @@
++Provides: cmake(PlasmaActivities)
++Provides: pkgconfig(PlasmaActivities)
++Provides: %{_lib}PlasmaActivities-devel
+ Conflicts:    %{_lib}PlasmaActivities-devel
+@@ -82 +82,0 @@
+-rm -rf %{buildroot}/%{_libdir}/cmake %{buildroot}/%{_libdir}/pkgconfig
+@@ -93,2 +93,2 @@
+-# %{_libdir}/cmake/PlasmaActivities
+-# %{_libdir}/pkgconfig/PlasmaActivities.pc
++%{_libdir}/cmake/PlasmaActivities
++%{_libdir}/pkgconfig/PlasmaActivities.pc
