@@ -1,0 +1,6 @@
+diff --git a/sonic-sysguard-library/sonic-sysguard-library.spec b/sonic-sysguard-library/sonic-sysguard-library.spec
+--- a/sonic-sysguard-library/sonic-sysguard-library.spec
++++ b/sonic-sysguard-library/sonic-sysguard-library.spec
+@@ -75,1 +75,2 @@
+ BuildRequires: cmake(KF6Service)
++BuildRequires: cmake(KF6Solid)
