@@ -7,6 +7,7 @@ diff --git a/sonic-interface-libraries/sonic-interface-libraries.spec b/sonic-in
 @@ -63 +63 @@
 -BuildRequires: %{_lib}SonicDEKeybindDaemon-devel
 +BuildRequires: cmake(KF6GlobalAccel)
-@@ -72,1 +72,2 @@
+@@ -72,1 +72,3 @@
 +BuildRequires: cmake(KF6Bookmarks)
++BuildRequires: cmake(KF6Completion)
  BuildRequires: %{_lib}SonicFrameworksIO-devel
