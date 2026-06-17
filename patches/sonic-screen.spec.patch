@@ -1,0 +1,6 @@
+diff --git a/sonic-screen/sonic-screen.spec b/sonic-screen/sonic-screen.spec
+--- a/sonic-screen/sonic-screen.spec
++++ b/sonic-screen/sonic-screen.spec
+@@ -26 +26 @@
+-# BuildRequires:	cmake(KF6Screen)
++BuildRequires: cmake(KF6Screen)
