@@ -7,9 +7,8 @@ diff --git a/sonic-frameworks-runner/sonic-frameworks-runner.spec b/sonic-framew
 @@ -68,1 +68,2 @@
 +Provides: %{_lib}KF6Runner
  Conflicts: %{_lib}KF6Runner
-@@ -77,1 +77,4 @@
+@@ -77,1 +77,3 @@
 +Provides: cmake(KF6Runner)
-+Provides: kf6-krunner-devel
 +Provides: %{_lib}KF6Runner-devel
  Conflicts: %{_lib}KF6Runner-devel
 @@ -83 +83,0 @@
