@@ -4,7 +4,7 @@ diff --git a/sonic-screenlocker/sonic-screenlocker.spec b/sonic-screenlocker/son
 @@ -48 +48 @@
 -# BuildRequires:	cmake(KF6GlobalAccel)
 +BuildRequires: cmake(KF6GlobalAccel)
-@@ -61,1 +61,8 @@
+@@ -61,1 +61,9 @@
 -#BuildRequires:	cmake(KF6KIO)
 +BuildRequires: cmake(KF6KIO)
 +BuildRequires: cmake(KF6WindowSystem)
@@ -14,3 +14,4 @@ diff --git a/sonic-screenlocker/sonic-screenlocker.spec b/sonic-screenlocker/son
 +BuildRequires: cmake(KF6ItemViews)
 +BuildRequires: cmake(KF6JobWidgets)
 +BuildRequires: cmake(KF6Solid)
++BuildRequires: cmake(KF6KirigamiPlatform)
