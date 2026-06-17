@@ -1,0 +1,6 @@
+diff --git a/sonic-system-info/sonic-system-info.spec b/sonic-system-info/sonic-system-info.spec
+--- a/sonic-system-info/sonic-system-info.spec
++++ b/sonic-system-info/sonic-system-info.spec
+@@ -38,1 +38,2 @@
++BuildRequires: cmake(KF6WindowSystem)
+ BuildRequires: %{_lib}SonicFrameworksIO-devel
