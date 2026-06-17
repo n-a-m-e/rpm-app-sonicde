@@ -1,0 +1,22 @@
+diff --git a/sonic-frameworks-runner/sonic-frameworks-runner.spec b/sonic-frameworks-runner/sonic-frameworks-runner.spec
+--- a/sonic-frameworks-runner/sonic-frameworks-runner.spec
++++ b/sonic-frameworks-runner/sonic-frameworks-runner.spec
+@@ -57,1 +57,2 @@
++Provides: kf6-krunner
+ Conflicts:     kf6-krunner
+@@ -68,1 +68,2 @@
++Provides: %{_lib}KF6Runner
+ Conflicts: %{_lib}KF6Runner
+@@ -77,1 +77,4 @@
++Provides: cmake(KF6Runner)
++Provides: kf6-krunner-devel
++Provides: %{_lib}KF6Runner-devel
+ Conflicts: %{_lib}KF6Runner-devel
+@@ -83 +83,0 @@
+-rm -rf %{buildroot}/%{_libdir}/cmake
+@@ -89,1 +89,2 @@
+ %{_includedir}/KF6/KRunner
++%{_qtdir}/metatypes/qt6kf6runner_metatypes.json
+@@ -92 +92 @@
+-# %{_libdir}/cmake/KF6Runner
++%{_libdir}/cmake/KF6Runner
