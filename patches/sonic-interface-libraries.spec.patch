@@ -14,3 +14,18 @@ diff --git a/sonic-interface-libraries/sonic-interface-libraries.spec b/sonic-in
 +BuildRequires: cmake(KF6JobWidgets)
 +BuildRequires: cmake(KF6Solid)
  BuildRequires: %{_lib}SonicFrameworksIO-devel
+@@ -97,1 +97,2 @@
++Provides: %{_lib}Plasma
+ Conflicts:       %{_lib}Plasma
+@@ -106,1 +106,4 @@
++Provides: cmake(Plasma)
++Provides: cmake(PlasmaQuick)
++Provides: %{_lib}Plasma-devel
+ Conflicts:  %{_lib}Plasma-devel
+@@ -132 +132,0 @@
+-rm -rf %{buildroot}/%{_libdir}/cmake
+@@ -143,2 +143,2 @@
+-# %{_libdir}/cmake/Plasma
+-# %{_libdir}/cmake/PlasmaQuick
++%{_libdir}/cmake/Plasma
++%{_libdir}/cmake/PlasmaQuick
