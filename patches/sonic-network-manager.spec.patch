@@ -1,0 +1,11 @@
+diff --git a/sonic-network-manager/sonic-network-manager.spec b/sonic-network-manager/sonic-network-manager.spec
+--- a/sonic-network-manager/sonic-network-manager.spec
++++ b/sonic-network-manager/sonic-network-manager.spec
+@@ -31,1 +31,7 @@
++BuildRequires: cmake(KF6Bookmarks)
++BuildRequires: cmake(KF6Completion)
++BuildRequires: cmake(KF6ItemViews)
++BuildRequires: cmake(KF6JobWidgets)
++BuildRequires: cmake(KF6Solid)
++BuildRequires: cmake(KF6WindowSystem)
+ BuildRequires:  %{_lib}SonicDE-devel
