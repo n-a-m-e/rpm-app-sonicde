@@ -1,0 +1,6 @@
+diff --git a/sonic-desktop-interface/sonic-desktop-interface.spec b/sonic-desktop-interface/sonic-desktop-interface.spec
+--- a/sonic-frameworks-core-addons/sonic-desktop-interface.spec
++++ b/sonic-frameworks-core-addons/sonic-desktop-interface.spec
+@@ -167,1 +167,2 @@
++Provides: plasma-desktop
+ Conflicts:    plasma-desktop
