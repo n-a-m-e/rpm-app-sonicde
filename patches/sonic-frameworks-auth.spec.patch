@@ -4,12 +4,12 @@ diff --git a/sonic-frameworks-auth/sonic-frameworks-auth.spec b/sonic-frameworks
 @@ -52,1 +52,2 @@
 +Provides:      kf6-kauth
  Conflicts:     kf6-kauth
-@@ -70,1 +71,3 @@
+@@ -70,1 +70,3 @@
 +Provides: cmake(KF6Auth)
 +Provides: %{_lib}KF6Auth-devel
  Conflicts:  %{_lib}KF6Auth-devel
-@@ -79 +82,0 @@
+@@ -79,1 +79,0 @@
 -rm -rf %{buildroot}/%{_libdir}/cmake
-@@ -92 +94 @@
+@@ -92,1 +92,1 @@
 -# %{_libdir}/cmake/KF6Auth
 +%{_libdir}/cmake/KF6Auth
