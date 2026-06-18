@@ -4,10 +4,10 @@ diff --git a/sonic-frameworks-doctools/sonic-frameworks-doctools.spec b/sonic-fr
 @@ -48,1 +48,2 @@
 +Provides: kf6-kdoctools
  Conflicts:  kf6-kdoctools
-@@ -57,1 +58,2 @@
+@@ -57,1 +57,2 @@
 +Provides: %{_lib}KF6DocTools
  Conflicts:  %{_lib}KF6DocTools
-@@ -66,1 +68,3 @@
+@@ -66,1 +66,3 @@
 +Provides: cmake(KF6DocTools)
 +Provides: %{_lib}KF6DocTools-devel
  Conflicts: %{_lib}KF6DocTools-devel
