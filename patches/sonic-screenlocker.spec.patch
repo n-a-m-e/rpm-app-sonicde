@@ -21,7 +21,7 @@ diff --git a/sonic-screenlocker/sonic-screenlocker.spec b/sonic-screenlocker/son
 +Provides:       cmake(KScreenLocker)
 +Provides:       cmake(ScreenSaverDBusInterface)
  Conflicts:      %{_lib}kscreenlocker-devel
-@@ -130,2 +132,2 @@
+@@ -130,2 +130,2 @@
 -# %{_libdir}/cmake/KScreenLocker
 -# %{_libdir}/cmake/ScreenSaverDBusInterface
 +%{_libdir}/cmake/KScreenLocker
