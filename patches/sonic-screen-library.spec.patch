@@ -9,9 +9,8 @@ diff --git a/sonic-screen-library/sonic-screen-library.spec b/sonic-screen-libra
 +Provides: pkgconfig(KF6Screen)
 +Provides: %{_lib}KF6Screen-devel
  Conflicts:      %{_lib}KF6Screen-devel
-@@ -64 +64,0 @@
+@@ -64,2 +64,0 @@
 -rm -rf %{buildroot}/%{_libdir}/cmake
-@@ -65 +65,0 @@
 -rm -rf %{buildroot}/%{_libdir}/pkgconfig
 @@ -90,2 +90,2 @@
 -# %{_libdir}/cmake/KF6Screen
