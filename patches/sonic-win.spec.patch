@@ -1,0 +1,6 @@
+diff --git a/sonic-win/sonic-win.spec b/sonic-win/sonic-win.spec
+--- a/sonic-win/sonic-win.spec
++++ b/sonic-win/sonic-win.spec
+@@ -45,1 +45,2 @@
++BuildRequires: cmake(Qt6Svg)
+ BuildRequires: cmake(Qt6Core5Compat)
