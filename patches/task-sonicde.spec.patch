@@ -1,7 +1,7 @@
 diff --git a/task-sonicde/task-sonicde.spec b/task-sonicde/task-sonicde.spec
 --- a/task-sonicde/task-sonicde.spec
 +++ b/task-sonicde/task-sonicde.spec
-@@ -6,1 +8,16 @@
+@@ -6,1 +6,16 @@
  Group:		Graphical desktop/SonicDE
 +Requires:	%{name}-minimal = %{EVRD}
 +Requires:  sonic-workspace-wallpapers
