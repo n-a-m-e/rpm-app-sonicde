@@ -1,7 +1,7 @@
 diff --git a/sonic-frameworks-windowsystem/sonic-frameworks-windowsystem.spec b/sonic-frameworks-windowsystem/sonic-frameworks-windowsystem.spec
 --- a/sonic-frameworks-windowsystem/sonic-frameworks-windowsystem.spec
 +++ b/sonic-frameworks-windowsystem/sonic-frameworks-windowsystem.spec
-@@ -46 +46,0 @@
+@@ -46,1 +46,0 @@
 -Requires: sonic-win
 @@ -47,1 +47,3 @@
 +Provides: cmake(KF6WindowSystem)
