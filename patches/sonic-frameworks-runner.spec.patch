@@ -11,11 +11,11 @@ diff --git a/sonic-frameworks-runner/sonic-frameworks-runner.spec b/sonic-framew
 +Provides: cmake(KF6Runner)
 +Provides: %{_lib}KF6Runner-devel
  Conflicts: %{_lib}KF6Runner-devel
-@@ -83 +83,0 @@
+@@ -83,1 +83,0 @@
 -rm -rf %{buildroot}/%{_libdir}/cmake
 @@ -89,1 +89,2 @@
  %{_includedir}/KF6/KRunner
 +%{_qtdir}/metatypes/qt6kf6runner_metatypes.json
-@@ -92 +92 @@
+@@ -92,1 +92,1 @@
 -# %{_libdir}/cmake/KF6Runner
 +%{_libdir}/cmake/KF6Runner
