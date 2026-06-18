@@ -1,0 +1,26 @@
+diff --git a/task-sonicde/task-sonicde.spec b/task-sonicde/task-sonicde.spec
+--- a/task-sonicde/task-sonicde.spec
++++ b/task-sonicde/task-sonicde.spec
+@@ -6,1 +8,16 @@
+ Group:		Graphical desktop/SonicDE
++Requires:	%{name}-minimal = %{EVRD}
++Requires:  sonic-workspace-wallpapers
++Requires:	silver-sddm
++
++%description
++This package is a meta-package, meaning that its purpose is to contain
++the minimal dependencies for running SonicDE.
++
++%files
++
++#----------------------------------------------------------------------------
++
++%package complete
++Summary:	Complete dependencies needed for SonicDE
++Group:		Graphical desktop/SonicDE
+@@ -96 +96 @@
+-%description
++%description complete
+@@ -100 +100 @@
+-%files
++%files complete
