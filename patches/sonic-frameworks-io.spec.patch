@@ -12,8 +12,8 @@ diff --git a/sonic-frameworks-io/sonic-frameworks-io.spec b/sonic-frameworks-io/
 +Provides: cmake(KF6KIO)
 +Provides: %{_lib}KF6KIO-devel
  Conflicts:  %{_lib}KF6KIO-devel
-@@ -124 +124,0 @@
+@@ -124,1 +124,0 @@
 -rm -rf %{buildroot}/%{_libdir}/cmake
-@@ -166 +166 @@
+@@ -166,1 +166,1 @@
 -# %{_libdir}/cmake/KF6KIO
 +%{_libdir}/cmake/KF6KIO
