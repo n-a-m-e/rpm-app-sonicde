@@ -11,8 +11,8 @@ diff --git a/sonic-frameworks-keybind/sonic-frameworks-keybind.spec b/sonic-fram
 +Provides: cmake(KF6GlobalAccel)
 +Provides: %{_lib}KF6GlobalAccel-devel
  Conflicts: %{_lib}KF6GlobalAccel-devel
-@@ -71 +71,0 @@
+@@ -71,1 +71,0 @@
 -rm -rf %{buildroot}/%{_libdir}/cmake
-@@ -81 +81 @@
+@@ -81,1 +81,1 @@
 -# %{_libdir}/cmake/KF6GlobalAccel
 +%{_libdir}/cmake/KF6GlobalAccel
