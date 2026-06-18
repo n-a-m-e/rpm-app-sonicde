@@ -4,10 +4,10 @@ diff --git a/sonic-frameworks-keybind/sonic-frameworks-keybind.spec b/sonic-fram
 @@ -46,1 +46,2 @@
 +Provides:      kf6-kglobalaccel
  Conflicts:     kf6-kglobalaccel
-@@ -55,1 +56,2 @@
+@@ -55,1 +55,2 @@
 +Provides: %{_lib}KF6GlobalAccel
  Conflicts: %{_lib}KF6GlobalAccel
-@@ -64,1 +66,3 @@
+@@ -64,1 +64,3 @@
 +Provides: cmake(KF6GlobalAccel)
 +Provides: %{_lib}KF6GlobalAccel-devel
  Conflicts: %{_lib}KF6GlobalAccel-devel
