@@ -17,9 +17,8 @@ diff --git a/sonic-screenlocker/sonic-screenlocker.spec b/sonic-screenlocker/son
 +BuildRequires: cmake(KF6KirigamiPlatform)
 @@ -77,1 +77,0 @@
 -rm -rf %{buildroot}/%{_libdir}/cmake
-@@ -119,1 +119,3 @@
-+Provides:       cmake(KScreenLocker)
-+Provides:       cmake(ScreenSaverDBusInterface)
+@@ -119,1 +119,2 @@
++Provides:       %{_lib}kscreenlocker-devel
  Conflicts:      %{_lib}kscreenlocker-devel
 @@ -130,2 +130,2 @@
 -# %{_libdir}/cmake/KScreenLocker
