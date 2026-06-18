@@ -1,9 +1,8 @@
 diff --git a/sonic-win/sonic-win.spec b/sonic-win/sonic-win.spec
 --- a/sonic-win/sonic-win.spec
 +++ b/sonic-win/sonic-win.spec
-@@ -45,1 +45,5 @@
+@@ -45,1 +45,4 @@
 +BuildRequires: cmake(Qt6Svg)
 +BuildRequires: cmake(KF6I18n)
 +BuildRequires: cmake(KF6WindowSystem)
-+BuildRequires: cmake(KDecoration3)
  BuildRequires: cmake(Qt6Core5Compat)
