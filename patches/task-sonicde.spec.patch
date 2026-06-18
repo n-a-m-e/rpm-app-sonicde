@@ -18,9 +18,9 @@ diff --git a/task-sonicde/task-sonicde.spec b/task-sonicde/task-sonicde.spec
 +%package complete
 +Summary:	Complete dependencies needed for SonicDE
 +Group:		Graphical desktop/SonicDE
-@@ -96 +96 @@
+@@ -96,1 +96,1 @@
 -%description
 +%description complete
-@@ -100 +100 @@
+@@ -100,1 +100,1 @@
 -%files
 +%files complete
