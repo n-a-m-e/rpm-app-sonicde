@@ -1,7 +1,7 @@
 diff --git a/sonic-frameworks-io-extras/sonic-frameworks-io-extras.spec b/sonic-frameworks-io-extras/sonic-frameworks-io-extras.spec
 --- a/sonic-frameworks-io-extras/sonic-frameworks-io-extras.spec
 +++ b/sonic-frameworks-io-extras/sonic-frameworks-io-extras.spec
-@@ -49 +49,0 @@
+@@ -49,1 +49,0 @@
 -BuildRequires: pkgconfig(libappimage)
 @@ -54,1 +54,7 @@
 +BuildRequires: cmake(KF6Archive)
@@ -11,17 +11,17 @@ diff --git a/sonic-frameworks-io-extras/sonic-frameworks-io-extras.spec b/sonic-
 +BuildRequires: cmake(KF6ItemViews)
 +BuildRequires: cmake(KF6JobWidgets)
  BuildRequires: cmake(KF6IconThemes)
-@@ -75 +75,0 @@
+@@ -75,1 +75,0 @@
 -BuildRequires: kdsoap-qt6-devel
 @@ -100,1 +100,3 @@
 +Provides: cmake(KioArchive6)
 +Provides: %{_lib}kioarchive6-devel
  Conflicts: %{_lib}kioarchive6-devel
-@@ -106 +106,0 @@
+@@ -106,1 +106,0 @@
 -rm -rf %{buildroot}/%{_libdir}/cmake
 @@ -135,1 +135,2 @@
  %{_libdir}/libexec/wpad-detector-helper
 +%doc %{_docdir}/HTML/*
-@@ -144 +144 @@
+@@ -144,1 +144,1 @@
 -# %{_libdir}/cmake/KioArchive6
 +%{_libdir}/cmake/KioArchive6
