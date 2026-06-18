@@ -4,3 +4,24 @@ diff --git a/sonic-sysguard-library/sonic-sysguard-library.spec b/sonic-sysguard
 @@ -75,1 +75,2 @@
  BuildRequires: cmake(KF6Service)
 +BuildRequires: cmake(KF6Solid)
+@@ -100,1 +100,2 @@
++Provides: libksysguard
+ Conflicts: libksysguard
+@@ -133,1 +133,2 @@
++Provides: %{_lib}KSysGuardSystemStats
+ Conflicts: %{_lib}KSysGuardSystemStats
+@@ -149,1 +149,2 @@
++Provides: %{_lib}processcore
+ Conflicts: %{_lib}processcore
+@@ -165,1 +165,2 @@
++Provides: %{_lib}KSysGuardFormatter
+ Conflicts: %{_lib}KSysGuardFormatter
+@@ -181,1 +181,2 @@
++Provides: %{_lib}KSysGuardSensorFaces
+ Conflicts: %{_lib}KSysGuardSensorFaces
+@@ -197,1 +197,2 @@
++Provides: %{_lib}KSysGuardSensors
+ Conflicts: %{_lib}KSysGuardSensors
+@@ -217,1 +217,2 @@
++Provides: %{_lib}KF6Libsysguard-devel
+ Conflicts: %{_lib}KF6Libsysguard-devel
