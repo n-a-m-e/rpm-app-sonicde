@@ -1,13 +1,15 @@
 diff --git a/sonic-decoration/sonic-decoration.spec b/sonic-decoration/sonic-decoration.spec
 --- a/sonic-decoration/sonic-decoration.spec
 +++ b/sonic-decoration/sonic-decoration.spec
+@@ -34,1 +34,2 @@
++Provides: kdecoration
+ Conflicts:    kdecoration
 @@ -47,1 +47,2 @@
 +Provides: %{_lib}kdecorations3
  Conflicts: %{_lib}kdecorations3
 @@ -53,1 +55,0 @@
 -rm -rf %{buildroot}/%{_libdir}/cmake
 @@ -63,1 +63,3 @@
-+Provides: cmake(KDecoration3)
 +Provides: %{_lib}kdecorations3-devel
  Conflicts: %{_lib}kdecorations3-devel
 @@ -75,1 +75,1 @@
