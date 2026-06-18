@@ -1,6 +1,6 @@
 diff --git a/silver-theme/silver-theme.spec b/silver-theme/silver-theme.spec
 --- a/silver-theme/silver-theme.spec
 +++ b/silver-theme/silver-theme.spec
-@@ -28 +28 @@
+@@ -28,1 +28,1 @@
 -BuildRequires:  cmake(KDecoration3)
 +BuildRequires:  %{_lib}sonicdecorations3-devel
