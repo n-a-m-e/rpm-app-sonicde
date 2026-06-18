@@ -7,3 +7,6 @@ diff --git a/sonic-system-info/sonic-system-info.spec b/sonic-system-info/sonic-
 +BuildRequires: cmake(KF6ItemViews)
 +BuildRequires: cmake(KF6JobWidgets)
  BuildRequires: %{_lib}SonicFrameworksIO-devel
+@@ -120,1 +120,2 @@
+ %{_datadir}/kinfocenter
++%doc %{_docdir}/HTML/*
